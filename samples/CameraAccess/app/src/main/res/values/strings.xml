@@ -6,6 +6,7 @@
     <string name="unregister_button_title" description="Disconnect App">Disconnect</string>
     <string name="stream_button_title" description="Start streaming">Start streaming</string>
     <string name="stop_stream_button_title" description="Stop streaming">Stop streaming</string>
+    <string name="stop_stream_button_short_title" description="Compact stop streaming button label">Stop</string>
     <string name="home_tip_video_title" description="Tip title about video capture">Video Capture</string>
     <string name="home_tip_audio_title" description="Tip title about audio">Open-Ear Audio</string>
     <string name="home_tip_hands_title" description="Tip title about hands free">Enjoy On-the-Go</string>
@@ -35,6 +36,20 @@
     <string name ="captured_photo" description="Captured Photo">Captured Photo</string>
     <string name ="capture_photo" description="Capture Photo">Capture Photo</string>
     <string name="share" description="Share">Share</string>
+
+    <!-- Describe with Ollama -->
+    <string name="describe_button_title" description="Describe what the camera sees">Describe</string>
+    <string name="describe_button_short_title" description="Compact describe button label">Ask</string>
+    <string name="describe_loading" description="Loading description">Asking Ollama&#8230;</string>
+    <string name="describe_result_label" description="Label for description result">Answer:</string>
+    <string name="describe_error_prefix" description="Prefix for errors">Error:</string>
+    <string name="voice_button_title" description="Voice trigger for describe">Voice ask</string>
+    <string name="voice_button_short_title" description="Compact voice ask button label">Voice</string>
+    <string name="voice_listening_button" description="Voice button while listening">Listening…</string>
+    <string name="voice_listening_button_short" description="Compact voice listening button label">Listening…</string>
+    <string name="voice_listening" description="Listening status">Listening for your question…</string>
+    <string name="voice_heard_label" description="Prefix for heard voice question">You asked:</string>
+    <string name="command_center_error_prefix" description="Prefix for command center errors">Command centre:</string>
 
     <!-- Mock Device Kit Screen -->
     <string name="mock_device_kit_title" description="Mock Device Kit Title">Mock Device Kit</string>

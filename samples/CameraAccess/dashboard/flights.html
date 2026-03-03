@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flights Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #000000;
+      --panel: rgba(255, 255, 255, 0.08);
+      --panel-border: rgba(255, 255, 255, 0.2);
+      --text: #edf4ff;
+      --muted: #a9bdd9;
+      --error: #ff8f9b;
+      --hint: #c69cff;
+      --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif;
+      --fs-label: 1.05rem;
+      --fs-control: 1.15rem;
+      --fs-table: 1.02rem;
+      --fs-note: 1.05rem;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 1rem;
+      font-weight: 400;
+      line-height: 1.5;
+      background: var(--bg);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px 28px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      backdrop-filter: blur(8px);
+      padding: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .top {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 1.6rem;
+      font-weight: 500;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: var(--fs-note);
+      margin-top: 4px;
+    }
+
+    .btn {
+      display: inline-block;
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 1rem;
+      color: var(--text);
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+    }
+
+    .controls {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 16px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field-label {
+      font-size: var(--fs-label);
+      font-weight: 500;
+      color: #d8e6ff;
+    }
+
+    .control {
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      background: rgba(7, 16, 30, 0.95);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: var(--fs-control);
+      font-weight: 500;
+      width: 100%;
+      min-height: 62px;
+    }
+
+    .input {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: inherit;
+      width: 100%;
+      outline: 0;
+      min-height: 26px;
+    }
+
+    .input::placeholder {
+      color: #8ea5c7;
+      opacity: 1;
+    }
+
+    .control:focus-within {
+      outline: 1px solid rgba(68, 165, 255, 0.8);
+      outline-offset: 0;
+      border-color: rgba(68, 165, 255, 0.85);
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(1) brightness(0.9);
+      opacity: 0.9;
+    }
+
+    .updated {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      font-size: var(--fs-control);
+      color: var(--text);
+      justify-self: end;
+      margin-bottom: 8px;
+    }
+
+    .refresh-btn {
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+
+    .notice {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: var(--fs-note);
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: var(--fs-note);
+      color: var(--muted);
+    }
+
+    .status.error { color: var(--error); }
+
+    .earlier-wrap {
+      margin-top: 12px;
+    }
+
+    .earlier-btn {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--hint);
+      letter-spacing: 0.12em;
+      font-size: var(--fs-label);
+      font-weight: 600;
+      padding: 14px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+
+    .earlier-btn:hover {
+      background: rgba(255, 255, 255, 0.11);
+    }
+
+    .earlier-btn[hidden] {
+      display: none;
+    }
+
+    .table-wrap {
+      margin-top: 14px;
+      overflow: auto;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+      background: rgba(6, 15, 29, 0.45);
+    }
+
+    th, td {
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      text-align: left;
+      font-size: var(--fs-table);
+      vertical-align: top;
+    }
+
+    th {
+      color: #d2e7ff;
+      position: sticky;
+      top: 0;
+      background: rgba(15, 35, 66, 0.95);
+      z-index: 1;
+    }
+
+    @media (max-width: 1100px) {
+      .controls {
+        grid-template-columns: 1fr 1fr;
+      }
+      .updated {
+        justify-self: start;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+      .btn {
+        width: fit-content;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="panel">
+      <div class="top">
+        <div>
+          <h1 class="title">Flight Departure Page</h1>
+          <div class="muted">Live proxy to CAS flights API</div>
+        </div>
+        <a class="btn" href="/">Back to AI Dashboard</a>
+      </div>
+
+      <section class="controls">
+        <div class="field">
+          <label class="field-label" for="dateInput">Pick a date</label>
+          <div class="control">
+            <input id="dateInput" class="input" type="date" required />
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="terminalSelect">Terminal</label>
+          <div class="control">
+            <select id="terminalSelect" class="input">
+              <option value="all">All</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="searchInput">Search</label>
+          <div class="control">
+            <input id="searchInput" class="input" type="search" placeholder="Flight, airline, destination, gate, status" />
+          </div>
+        </div>
+
+        <div class="updated">
+          <span>Last Updated <strong id="lastUpdated">--:--</strong></span>
+          <button id="refreshBtn" class="refresh-btn" type="button">Refresh</button>
+        </div>
+      </section>
+
+      <div class="notice">Flight details may change without notice. Please check again closer to the scheduled flight time.</div>
+
+      <div id="status" class="status">Ready</div>
+
+      <div class="earlier-wrap">
+        <button id="earlierToggle" class="earlier-btn" type="button">Show Earlier Flights</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Flight</th>
+              <th>Airline</th>
+              <th>Destination</th>
+              <th>STD/ETD</th>
+              <th>Terminal/Gate</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const dateInput = document.getElementById("dateInput");
+    const terminalSelect = document.getElementById("terminalSelect");
+    const searchInput = document.getElementById("searchInput");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const lastUpdatedEl = document.getElementById("lastUpdated");
+    const statusEl = document.getElementById("status");
+    const rowsEl = document.getElementById("rows");
+    const earlierToggle = document.getElementById("earlierToggle");
+
+    const today = new Date().toISOString().slice(0, 10);
+    dateInput.value = today;
+
+    let showEarlierFlights = false;
+    let filteredRows = [];
+    let hiddenCodeshareCount = 0;
+    let hiddenDepartedCount = 0;
+
+    function updateLastUpdated() {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      lastUpdatedEl.textContent = `${hh}:${mm}`;
+    }
+
+    function setStatus(text, isError = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("error", isError);
+    }
+
+    function normalizeRows(payload) {
+      if (!payload || typeof payload !== "object") return [];
+      const data = payload.data;
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.items)) return data.items;
+      if (data && Array.isArray(data.flights)) return data.flights;
+      if (data && Array.isArray(data.data)) return data.data;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.flights)) return payload.flights;
+      if (Array.isArray(payload.list)) return payload.list;
+      return [];
+    }
+
+    function normalizeKey(key) {
+      return String(key).toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+
+    function collectScalarFields(value, prefix = "", depth = 0) {
+      if (depth > 3 || value === null || value === undefined) return [];
+      const type = typeof value;
+      if (type === "string" || type === "number" || type === "boolean") {
+        return [[prefix, String(value)]];
+      }
+      if (Array.isArray(value) || type !== "object") return [];
+      const out = [];
+      Object.entries(value).forEach(([key, child]) => {
+        const next = prefix ? `${prefix}.${key}` : key;
+        out.push(...collectScalarFields(child, next, depth + 1));
+      });
+      return out;
+    }
+
+    function pickFlexible(row, preferredKeys, keyMatchers = []) {
+      const fields = collectScalarFields(row);
+      if (!fields.length) return "-";
+
+      for (const wanted of preferredKeys) {
+        const wantedNorm = normalizeKey(wanted);
+        const hit = fields.find(([path, value]) => {
+          if (!value || value.trim() === "") return false;
+          const leaf = path.split(".").pop() || path;
+          return normalizeKey(path) === wantedNorm || normalizeKey(leaf) === wantedNorm;
+        });
+        if (hit) return hit[1];
+      }
+
+      for (const [path, value] of fields) {
+        if (!value || value.trim() === "") continue;
+        const leaf = path.split(".").pop() || path;
+        if (keyMatchers.some((matcher) => matcher.test(path) || matcher.test(leaf))) {
+          return value;
+        }
+      }
+
+      return "-";
+    }
+
+    function formatTiming(row) {
+      const std = pickFlexible(
+        row,
+        ["std", "scheduledDepartureTime", "scheduledTime", "scheduled", "stdTime"],
+        [/std/i, /scheduled.*departure/i, /scheduled.*time/i, /dep.*time/i],
+      );
+      const etd = pickFlexible(
+        row,
+        ["etd", "estimatedDepartureTime", "estimatedTime", "revisedTime", "departureTime", "depTime"],
+        [/etd/i, /estimated.*departure/i, /estimated.*time/i, /revised.*time/i, /departure.*time/i],
+      );
+      if (std !== "-" && etd !== "-" && std !== etd) return `${std} / ${etd}`;
+      if (std !== "-") return std;
+      if (etd !== "-") return etd;
+      return "-";
+    }
+
+    function toBool(value) {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "number") return value === 1;
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "y";
+      }
+      return false;
+    }
+
+    function isCodeShare(row) {
+      const codeShareFlags = [
+        "isCodeShare",
+        "isCodeshare",
+        "codeShare",
+        "codeshare",
+        "code_share",
+        "isCodeShareFlight",
+        "codeShareFlight",
+      ];
+      for (const key of codeShareFlags) {
+        if (Object.prototype.hasOwnProperty.call(row, key) && toBool(row[key])) {
+          return true;
+        }
+      }
+
+      const textFields = [
+        row?.status,
+        row?.flightStatus,
+        row?.remark,
+        row?.type,
+        row?.flightType,
+        row?.serviceType,
+      ];
+      return textFields.some((value) => {
+        if (value === undefined || value === null) return false;
+        const normalized = String(value).toLowerCase();
+        return normalized.includes("codeshare") || normalized.includes("code share");
+      });
+    }
+
+    function isHiddenStatus(row) {
+      const statusText = pickFlexible(
+        row,
+        ["status", "flightStatus", "remark", "departureStatus"],
+        [/status/i, /remark/i, /depart/i],
+      ).toLowerCase();
+      return (
+        statusText.includes("departed") ||
+        statusText.includes("gate closed") ||
+        statusText.includes("cancelled") ||
+        statusText.includes("canceled")
+      );
+    }
+
+    function parseMinutes(value) {
+      if (!value) return null;
+      const text = String(value);
+      const match12 = text.match(/\b(1[0-2]|0?[1-9]):([0-5][0-9])\s*([ap]m)\b/i);
+      if (match12) {
+        let hour = parseInt(match12[1], 10) % 12;
+        if (match12[3].toLowerCase() === "pm") hour += 12;
+        return hour * 60 + parseInt(match12[2], 10);
+      }
+      const match24 = text.match(/\b([01]?[0-9]|2[0-3]):([0-5][0-9])\b/);
+      if (match24) {
+        return parseInt(match24[1], 10) * 60 + parseInt(match24[2], 10);
+      }
+      return null;
+    }
+
+    function isSelectedDateToday() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      return dateInput.value === `${yyyy}-${mm}-${dd}`;
+    }
+
+    function terminalToken(value) {
+      if (!value || value === "-") return "-";
+      const str = String(value).toUpperCase().trim();
+      const tagged = str.match(/\bT\s*([1-4])\b/);
+      if (tagged) return `T${tagged[1]}`;
+      const direct = str.match(/\b([1-4])\b/);
+      if (direct) return `T${direct[1]}`;
+      return str;
+    }
+
+    function getTerminal(row) {
+      const raw = pickFlexible(row, ["terminalGate", "terminal_gate", "terminal", "terminalName"], [/terminal/i]);
+      return terminalToken(raw);
+    }
+
+    function buildSearchText(row) {
+      return [
+        pickFlexible(row, ["flightNo", "flightno", "flight_no", "flight"], [/flight.*no/i, /^flight$/i]),
+        pickFlexible(row, ["airlineName", "airline", "carrierName", "carrier"], [/airline/i, /carrier/i]),
+        pickFlexible(row, ["destination", "dest", "to"], [/dest/i, /to/i]),
+        formatTiming(row),
+        pickFlexible(row, ["terminalGate", "terminal_gate", "terminal", "gate"], [/terminal/i, /gate/i]),
+        pickFlexible(row, ["status", "flightStatus", "remark"], [/status/i, /remark/i]),
+      ].join(" ").toLowerCase();
+    }
+
+    function matchesSearch(row, term) {
+      if (!term) return true;
+      return buildSearchText(row).includes(term);
+    }
+
+    function syncTerminalOptions(rows) {
+      const current = terminalSelect.value || "all";
+      const terminals = Array.from(
+        new Set(
+          rows
+            .map((row) => getTerminal(row))
+            .filter((value) => value && value !== "-" && value !== "ALL"),
+        ),
+      ).sort();
+      terminalSelect.innerHTML = `<option value="all">All</option>${terminals
+        .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+        .join("")}`;
+      if (current !== "all" && terminals.includes(current)) {
+        terminalSelect.value = current;
+      } else {
+        terminalSelect.value = "all";
+      }
+    }
+
+    function applyDisplayFilter() {
+      let rowsToRender = filteredRows;
+      let hiddenTerminalCount = 0;
+      let hiddenEarlierCount = 0;
+      let hiddenSearchCount = 0;
+
+      if (terminalSelect.value !== "all") {
+        const before = rowsToRender.length;
+        rowsToRender = rowsToRender.filter((row) => getTerminal(row) === terminalSelect.value);
+        hiddenTerminalCount = before - rowsToRender.length;
+      }
+
+      if (isSelectedDateToday()) {
+        earlierToggle.hidden = false;
+        const now = new Date();
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        if (!showEarlierFlights) {
+          const before = rowsToRender.length;
+          rowsToRender = rowsToRender.filter((row) => {
+            const mins = parseMinutes(formatTiming(row));
+            if (mins === null) return true;
+            return mins >= nowMinutes;
+          });
+          hiddenEarlierCount = before - rowsToRender.length;
+        }
+      } else {
+        earlierToggle.hidden = true;
+        showEarlierFlights = false;
+      }
+
+      const searchTerm = searchInput.value.trim().toLowerCase();
+      if (searchTerm) {
+        const before = rowsToRender.length;
+        rowsToRender = rowsToRender.filter((row) => matchesSearch(row, searchTerm));
+        hiddenSearchCount = before - rowsToRender.length;
+      }
+
+      earlierToggle.textContent = showEarlierFlights ? "Hide Earlier Flights" : "Show Earlier Flights";
+      render(rowsToRender);
+
+      const parts = [`Loaded ${rowsToRender.length} record(s).`];
+      if (hiddenCodeshareCount > 0) parts.push(`Hidden ${hiddenCodeshareCount} codeshare.`);
+      if (hiddenDepartedCount > 0) parts.push(`Hidden ${hiddenDepartedCount} by status (departed/gate closed/cancelled).`);
+      if (hiddenTerminalCount > 0) parts.push(`Hidden ${hiddenTerminalCount} by terminal.`);
+      if (hiddenEarlierCount > 0) parts.push(`Hidden ${hiddenEarlierCount} earlier.`);
+      if (hiddenSearchCount > 0) parts.push(`Hidden ${hiddenSearchCount} by search.`);
+      setStatus(parts.join(" "));
+    }
+
+    function render(rows) {
+      rowsEl.innerHTML = "";
+      if (!rows.length) {
+        rowsEl.innerHTML = `<tr><td colspan="7">No records found for this query.</td></tr>`;
+        return;
+      }
+
+      rows.forEach((row, idx) => {
+        const timing = formatTiming(row);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td>${escapeHtml(pickFlexible(row, ["flightNo", "flightno", "flight_no", "flight"], [/flight.*no/i, /^flight$/i]))}</td>
+          <td>${escapeHtml(pickFlexible(row, ["airlineName", "airline", "carrierName", "carrier"], [/airline/i, /carrier/i]))}</td>
+          <td>${escapeHtml(pickFlexible(row, ["destination", "dest", "to"], [/dest/i, /to/i]))}</td>
+          <td>${escapeHtml(timing)}</td>
+          <td>${escapeHtml(pickFlexible(row, ["terminalGate", "terminal_gate", "terminal", "gate"], [/terminal/i, /gate/i]))}</td>
+          <td>${escapeHtml(pickFlexible(row, ["status", "flightStatus", "remark"], [/status/i, /remark/i]))}</td>
+        `;
+        rowsEl.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    async function loadFlights() {
+      const query = new URLSearchParams({
+        date: dateInput.value,
+        type: "scheduled",
+        flightno: "",
+      });
+      setStatus("Loading...");
+      try {
+        const resp = await fetch(`/api/flights?${query.toString()}`, { cache: "no-store" });
+        const payload = await resp.json();
+        if (!resp.ok || payload.ok === false) {
+          const errorText = payload?.error || `HTTP ${resp.status}`;
+          throw new Error(errorText);
+        }
+
+        const allRows = normalizeRows(payload);
+        const withoutCodeshare = allRows.filter((row) => !isCodeShare(row));
+        hiddenCodeshareCount = allRows.length - withoutCodeshare.length;
+        filteredRows = withoutCodeshare.filter((row) => !isHiddenStatus(row));
+        hiddenDepartedCount = withoutCodeshare.length - filteredRows.length;
+        syncTerminalOptions(filteredRows);
+        applyDisplayFilter();
+        updateLastUpdated();
+      } catch (error) {
+        filteredRows = [];
+        hiddenCodeshareCount = 0;
+        hiddenDepartedCount = 0;
+        rowsEl.innerHTML = "";
+        setStatus(`Failed: ${error.message}`, true);
+      }
+    }
+
+    dateInput.addEventListener("change", () => {
+      showEarlierFlights = false;
+      loadFlights();
+    });
+
+    terminalSelect.addEventListener("change", () => {
+      applyDisplayFilter();
+    });
+
+    searchInput.addEventListener("input", () => {
+      applyDisplayFilter();
+    });
+
+    refreshBtn.addEventListener("click", () => {
+      loadFlights();
+    });
+
+    earlierToggle.addEventListener("click", () => {
+      showEarlierFlights = !showEarlierFlights;
+      applyDisplayFilter();
+    });
+
+    loadFlights();
+  </script>
+</body>
+</html>

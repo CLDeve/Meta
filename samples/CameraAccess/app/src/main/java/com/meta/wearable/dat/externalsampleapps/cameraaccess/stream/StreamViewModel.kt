@@ -19,6 +19,7 @@ package com.meta.wearable.dat.externalsampleapps.cameraaccess.stream
 
 import android.app.Application
 import android.content.Intent
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
@@ -26,6 +27,13 @@ import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.util.Log
+import android.util.Base64
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.os.Bundle
+import android.os.Build
+import android.speech.tts.TextToSpeech
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
@@ -42,18 +50,27 @@ import com.meta.wearable.dat.camera.types.VideoQuality
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
 import com.meta.wearable.dat.core.selectors.DeviceSelector
+import com.meta.wearable.dat.externalsampleapps.cameraaccess.BuildConfig
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.wearables.WearablesViewModel
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Locale
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
 
 class StreamViewModel(
     application: Application,
@@ -62,6 +79,16 @@ class StreamViewModel(
 
   companion object {
     private const val TAG = "StreamViewModel"
+    private const val DEFAULT_DESCRIBE_QUESTION = "What is in front of me?"
+    private const val MAX_VOICE_RETRIES = 1
+    private const val OLLAMA_REQUEST_JPEG_QUALITY = 60
+    private const val OLLAMA_READ_TIMEOUT_MS = 45_000
+    private const val STREAM_FPS = 15
+    private const val PREVIEW_JPEG_QUALITY = 85
+    private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
+    private const val COMMAND_CENTER_DISABLED =
+        "Set COMMAND_CENTER_URL to forward responses to command centre"
+    private const val QA_EVENT_TYPE = "qa"
     private val INITIAL_STATE = StreamUiState()
   }
 
@@ -77,6 +104,9 @@ class StreamViewModel(
   private var videoJob: Job? = null
   private var stateJob: Job? = null
   private var timerJob: Job? = null
+  private var speechRecognizer: SpeechRecognizer? = null
+  private var voiceRetryCount: Int = 0
+  private var textToSpeech: TextToSpeech? = null
 
   init {
     // Collect timer state
@@ -113,7 +143,7 @@ class StreamViewModel(
         Wearables.startStreamSession(
                 getApplication(),
                 deviceSelector,
-                StreamConfiguration(videoQuality = VideoQuality.MEDIUM, 24),
+                StreamConfiguration(videoQuality = VideoQuality.HIGH, STREAM_FPS),
             )
             .also { streamSession = it }
     videoJob = viewModelScope.launch { streamSession.videoStream.collect { handleVideoFrame(it) } }
@@ -146,6 +176,65 @@ class StreamViewModel(
   fun capturePhoto() {
     if (uiState.value.streamSessionState == StreamSessionState.STREAMING) {
       viewModelScope.launch { streamSession?.capturePhoto()?.onSuccess { handlePhotoData(it) } }
+    }
+  }
+
+  fun describeCurrentFrame(question: String = DEFAULT_DESCRIBE_QUESTION) {
+    val frame = _uiState.value.videoFrame
+    val normalizedQuestion = question.trim().ifBlank { DEFAULT_DESCRIBE_QUESTION }
+    if (frame == null) {
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = null,
+            describeError = "No frame available yet",
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+      return
+    }
+
+    viewModelScope.launch {
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = true,
+            describeError = null,
+            describeResult = null,
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+
+      val result =
+          runCatching { queryOllama(frame, normalizedQuestion) }
+              .onFailure { Log.e(TAG, "Ollama describe failed", it) }
+
+      val describeResult = result.getOrNull()
+      val describeError = result.exceptionOrNull()?.message
+      if (!describeResult.isNullOrBlank()) {
+        speakText(describeResult)
+      } else if (!describeError.isNullOrBlank()) {
+        speakText("I could not get an answer right now. Please try again.")
+      }
+      var commandCenterStatus: String? = null
+      var commandCenterError: String? = null
+      runCatching { sendToCommandCenter(normalizedQuestion, describeResult, describeError, frame) }
+          .onSuccess { commandCenterStatus = it }
+          .onFailure {
+            commandCenterError = it.message
+            Log.e(TAG, "Command centre send failed", it)
+          }
+
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = describeResult,
+            describeError = describeError,
+            commandCenterStatus = commandCenterStatus,
+            commandCenterError = commandCenterError,
+        )
+      }
     }
   }
 
@@ -193,6 +282,247 @@ class StreamViewModel(
     streamTimer.resetTimer()
   }
 
+  fun startVoiceDescribe(context: Context) {
+    if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+      _uiState.update {
+        it.copy(
+            voiceHeardText = null,
+            isListening = false,
+            describeError = "Speech recognition not available",
+        )
+      }
+      return
+    }
+
+    speechRecognizer?.destroy()
+    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+    voiceRetryCount = 0
+    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault())
+      putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+      putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+    }
+    val listener =
+        object : RecognitionListener {
+          override fun onReadyForSpeech(params: Bundle?) {
+            _uiState.update { it.copy(isListening = true, voiceHeardText = null, describeError = null) }
+          }
+          override fun onBeginningOfSpeech() {}
+          override fun onRmsChanged(rmsdB: Float) {}
+          override fun onBufferReceived(buffer: ByteArray?) {}
+          override fun onEndOfSpeech() {}
+          override fun onError(error: Int) {
+            val canRetry =
+                (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) &&
+                    voiceRetryCount < MAX_VOICE_RETRIES
+            if (canRetry) {
+              voiceRetryCount += 1
+              _uiState.update {
+                it.copy(isListening = true, describeError = "Didn't catch that. Please say it again.")
+              }
+              speechRecognizer?.cancel()
+              speechRecognizer?.startListening(intent)
+              return
+            }
+            _uiState.update { it.copy(isListening = false, describeError = speechErrorMessage(error)) }
+          }
+          override fun onResults(results: Bundle?) {
+            val text =
+                results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?: ""
+            val normalizedText = text.trim()
+            voiceRetryCount = 0
+            _uiState.update { it.copy(isListening = false, voiceHeardText = normalizedText) }
+            if (normalizedText.isNotEmpty()) {
+              describeCurrentFrame(normalizedText)
+            } else {
+              _uiState.update {
+                it.copy(
+                    describeError = "Didn't catch your question. Try again.",
+                    commandCenterStatus = null,
+                    commandCenterError = null,
+                )
+              }
+            }
+          }
+          override fun onPartialResults(partialResults: Bundle?) {}
+          override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+
+    speechRecognizer?.setRecognitionListener(listener)
+    speechRecognizer?.startListening(intent)
+  }
+
+  fun stopVoiceDescribe() {
+    voiceRetryCount = 0
+    speechRecognizer?.stopListening()
+    _uiState.update { it.copy(isListening = false) }
+  }
+
+  private fun speechErrorMessage(error: Int): String {
+    return when (error) {
+      SpeechRecognizer.ERROR_NO_MATCH -> "Couldn't understand your speech (7)."
+      SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected in time (6)."
+      SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+          "Speech service network issue. Check internet."
+      SpeechRecognizer.ERROR_AUDIO -> "Microphone/audio input error."
+      SpeechRecognizer.ERROR_CLIENT -> "Speech client error. Try again."
+      SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required."
+      SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognizer busy. Retry."
+      SpeechRecognizer.ERROR_SERVER -> "Speech service server error."
+      else -> "Voice error: $error"
+    }
+  }
+
+  private suspend fun queryOllama(bitmap: Bitmap, question: String): String = withContext(Dispatchers.IO) {
+    val encodedImage =
+        ByteArrayOutputStream().use { stream ->
+          bitmap.compress(Bitmap.CompressFormat.JPEG, OLLAMA_REQUEST_JPEG_QUALITY, stream)
+          Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+        }
+    val payload =
+        JSONObject()
+            .put("model", BuildConfig.OLLAMA_MODEL)
+            .put("stream", false)
+            .put(
+                "messages",
+                JSONArray().put(
+                    JSONObject()
+                        .put("role", "user")
+                        .put(
+                            "content",
+                            "$question Answer briefly using only what is visible in the camera image.",
+                        )
+                        .put("images", JSONArray().put(encodedImage))
+                )
+            )
+            .toString()
+
+    val baseUrl = BuildConfig.OLLAMA_BASE_URL.trim().trimEnd('/')
+    if (baseUrl.contains("10.0.2.2") && !isProbablyEmulator()) {
+      throw IOException(
+          "OLLAMA_BASE_URL is $baseUrl. 10.0.2.2 works only on Android emulator; use your server LAN/IP URL for a physical phone."
+      )
+    }
+    val url = URL("$baseUrl/api/chat")
+    val connection =
+        (url.openConnection() as HttpURLConnection).apply {
+          requestMethod = "POST"
+          setRequestProperty("Content-Type", "application/json")
+          doOutput = true
+          connectTimeout = 15_000
+          readTimeout = OLLAMA_READ_TIMEOUT_MS
+        }
+
+    connection.outputStream.use { output -> output.write(payload.toByteArray()) }
+
+    val code = connection.responseCode
+    val responseStream = if (code in 200..299) connection.inputStream else connection.errorStream
+    val responseBody = responseStream.bufferedReader().use { it.readText() }
+    if (code !in 200..299) {
+      throw IOException("Ollama error $code at $baseUrl: $responseBody")
+    }
+
+    try {
+      val root = JSONObject(responseBody)
+      val message = root.getJSONObject("message")
+      message.getString("content")
+    } catch (e: JSONException) {
+      throw IOException("Unexpected Ollama response: $responseBody", e)
+    }
+  }
+
+  private suspend fun sendToCommandCenter(
+      question: String,
+      answer: String?,
+      aiError: String?,
+      frame: Bitmap?,
+  ): String =
+      withContext(Dispatchers.IO) {
+        val endpoint = BuildConfig.COMMAND_CENTER_URL.trim()
+        if (endpoint.isEmpty()) {
+          return@withContext COMMAND_CENTER_DISABLED
+        }
+
+        val encodedFrame =
+            frame?.let {
+              ByteArrayOutputStream().use { stream ->
+                it.compress(Bitmap.CompressFormat.JPEG, 55, stream)
+                Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+              }
+            }
+
+        val payload =
+            JSONObject()
+                .put("timestampEpochMs", System.currentTimeMillis())
+                .put("eventType", QA_EVENT_TYPE)
+                .put("question", question)
+                .put("answer", answer ?: JSONObject.NULL)
+                .put("aiError", aiError ?: JSONObject.NULL)
+                .put("imageMimeType", if (encodedFrame != null) "image/jpeg" else JSONObject.NULL)
+                .put("frameJpegBase64", encodedFrame ?: JSONObject.NULL)
+                .put("source", "meta-wearables-cameraaccess")
+                .toString()
+
+        val url = URL(endpoint)
+        val connection =
+            (url.openConnection() as HttpURLConnection).apply {
+              requestMethod = "POST"
+              setRequestProperty("Content-Type", "application/json")
+              doOutput = true
+              connectTimeout = 10_000
+              readTimeout = 15_000
+            }
+
+        connection.outputStream.use { output -> output.write(payload.toByteArray()) }
+
+        val code = connection.responseCode
+        val responseStream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val responseBody = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (code !in 200..299) {
+          throw IOException("Command centre error $code: $responseBody")
+        }
+        COMMAND_CENTER_SUCCESS
+      }
+
+  private fun speakText(text: String) {
+    val app = getApplication<Application>()
+    val existing = textToSpeech
+    if (existing != null) {
+      existing.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
+      return
+    }
+
+    textToSpeech =
+        TextToSpeech(app) { status ->
+          if (status == TextToSpeech.SUCCESS) {
+            val setDefaultResult = textToSpeech?.setLanguage(Locale.getDefault()) ?: TextToSpeech.LANG_MISSING_DATA
+            if (setDefaultResult == TextToSpeech.LANG_MISSING_DATA ||
+                setDefaultResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+              textToSpeech?.setLanguage(Locale.US)
+            }
+            textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
+          } else {
+            Log.w(TAG, "TextToSpeech initialization failed: $status")
+          }
+        }
+  }
+
+  private fun isProbablyEmulator(): Boolean {
+    return Build.FINGERPRINT.startsWith("generic") ||
+        Build.FINGERPRINT.lowercase().contains("emulator") ||
+        Build.MODEL.contains("Emulator") ||
+        Build.MANUFACTURER.contains("Genymotion") ||
+        Build.BRAND.startsWith("generic")
+  }
+
   private fun handleVideoFrame(videoFrame: VideoFrame) {
     // VideoFrame contains raw I420 video data in a ByteBuffer
     val buffer = videoFrame.buffer
@@ -210,13 +540,23 @@ class StreamViewModel(
     val image = YuvImage(nv21, ImageFormat.NV21, videoFrame.width, videoFrame.height, null)
     val out =
         ByteArrayOutputStream().use { stream ->
-          image.compressToJpeg(Rect(0, 0, videoFrame.width, videoFrame.height), 50, stream)
+          image.compressToJpeg(
+              Rect(0, 0, videoFrame.width, videoFrame.height),
+              PREVIEW_JPEG_QUALITY,
+              stream,
+          )
           stream.toByteArray()
         }
 
     val bitmap = BitmapFactory.decodeByteArray(out, 0, out.size)
     _uiState.update { it.copy(videoFrame = bitmap) }
   }
+
+  private fun encodeJpegBase64(bitmap: Bitmap, quality: Int): String =
+      ByteArrayOutputStream().use { stream ->
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+      }
 
   // Convert I420 (YYYYYYYY:UUVV) to NV21 (YYYYYYYY:VUVU)
   private fun convertI420toNV21(input: ByteArray, width: Int, height: Int): ByteArray {
@@ -333,6 +673,11 @@ class StreamViewModel(
     stateJob?.cancel()
     timerJob?.cancel()
     streamTimer.cleanup()
+    speechRecognizer?.destroy()
+    speechRecognizer = null
+    textToSpeech?.stop()
+    textToSpeech?.shutdown()
+    textToSpeech = null
   }
 
   class Factory(

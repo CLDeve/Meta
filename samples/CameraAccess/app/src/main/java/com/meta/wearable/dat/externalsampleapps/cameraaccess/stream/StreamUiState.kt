@@ -22,4 +22,11 @@ data class StreamUiState(
     val isShareDialogVisible: Boolean = false,
     val timerMode: TimerMode = TimerMode.UNLIMITED,
     val remainingTimeSeconds: Long? = null,
+    val isDescribeLoading: Boolean = false,
+    val describeResult: String? = null,
+    val describeError: String? = null,
+    val commandCenterStatus: String? = null,
+    val commandCenterError: String? = null,
+    val isListening: Boolean = false,
+    val voiceHeardText: String? = null,
 )

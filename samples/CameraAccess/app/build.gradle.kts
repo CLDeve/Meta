@@ -19,11 +19,17 @@ android {
   buildFeatures { buildConfig = true }
 
   defaultConfig {
-    applicationId = "com.meta.wearable.dat.externalsampleapps.cameraaccess"
+    applicationId = "com.certis.kerbside"
     minSdk = 31
     targetSdk = 34
     versionCode = 1
     versionName = "1.0"
+    val ollamaBaseUrl = System.getenv("OLLAMA_BASE_URL") ?: "http://10.0.2.2:11434"
+    val ollamaModel = System.getenv("OLLAMA_MODEL") ?: "llava"
+    val commandCenterUrl = System.getenv("COMMAND_CENTER_URL") ?: ""
+    buildConfigField("String", "OLLAMA_BASE_URL", "\"$ollamaBaseUrl\"")
+    buildConfigField("String", "OLLAMA_MODEL", "\"$ollamaModel\"")
+    buildConfigField("String", "COMMAND_CENTER_URL", "\"$commandCenterUrl\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables { useSupportLibrary = true }

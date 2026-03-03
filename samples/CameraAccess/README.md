@@ -39,9 +39,60 @@ A sample Android application demonstrating integration with Meta Wearables Devic
    - View and save captured photos
    - Disconnect from the device
 
+## Airport command centre flow (voice question -> answer -> dispatch)
+
+This sample supports voice questions during streaming and can forward each question/answer to your command centre endpoint.
+
+1. Set `COMMAND_CENTER_URL` to your backend endpoint (for example `https://your-command-centre.example.com/api/events`).
+1. Set `OLLAMA_BASE_URL` and `OLLAMA_MODEL` for visual answering.
+1. Build and run the app.
+1. In stream view, tap **Voice ask**, speak your question, and wait for the answer overlay.
+1. On successful answer, the app POSTs JSON to `COMMAND_CENTER_URL`.
+1. The app also speaks the answer aloud on the phone.
+
+### Real laptop dashboard (live events + frame snapshots)
+
+You can run a local web dashboard on your laptop:
+
+```bash
+cd dashboard
+python3 server.py --host 0.0.0.0 --port 5055
+```
+
+Then open:
+
+- `http://localhost:5055` on your laptop
+- or `http://<your-laptop-lan-ip>:5055` from other devices
+
+Build/install Android app with dashboard endpoint:
+
+```bash
+COMMAND_CENTER_URL="http://<your-laptop-lan-ip>:5055/api/events" \
+OLLAMA_BASE_URL="http://<your-laptop-lan-ip>:11434" \
+OLLAMA_MODEL="llava" \
+./gradlew :app:installDebug --rerun-tasks
+```
+
+Command centre payload format:
+
+```json
+{
+  "timestampEpochMs": 1730905012345,
+  "question": "Is gate A12 crowded?",
+  "answer": "The camera view shows ...",
+  "source": "meta-wearables-cameraaccess"
+}
+```
+
 ## Troubleshooting
 
 For issues related to the Meta Wearables Device Access Toolkit, please refer to the [developer documentation](https://wearables.developer.meta.com/docs/develop/) or visit our [discussions forum](https://github.com/facebook/meta-wearables-dat-android/discussions)
+
+If you do not get a reply after asking:
+
+1. Confirm the stream preview is visible before asking (reply requires a current frame).
+1. On a physical phone, do not use `http://10.0.2.2:11434` for `OLLAMA_BASE_URL` (that host is emulator-only).
+1. Use a reachable server URL on your network, for example `http://192.168.x.x:11434`.
 
 ## License
 

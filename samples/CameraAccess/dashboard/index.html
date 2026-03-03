@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Airport AI Command Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-1: #000000;
+      --bg-2: #000000;
+      --panel: rgba(255, 255, 255, 0.08);
+      --panel-border: rgba(255, 255, 255, 0.2);
+      --text: #edf4ff;
+      --muted: #a9bdd9;
+      --ok: #4df0b5;
+      --warn: #ffb57a;
+      --bad: #ff8f9b;
+      --accent: #44a5ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: #000000;
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .top {
+      display: grid;
+      grid-template-columns: 1.8fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      backdrop-filter: blur(8px);
+      padding: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .title {
+      font-size: 28px;
+      letter-spacing: 0.4px;
+      margin: 0 0 6px;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 13px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .pill strong { color: var(--text); }
+
+    .pill.link {
+      color: var(--text);
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 10px;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+      background: var(--warn);
+      box-shadow: 0 0 10px var(--warn);
+    }
+
+    .dot.ok {
+      background: var(--ok);
+      box-shadow: 0 0 10px var(--ok);
+    }
+
+    .feed {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .event {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-items: stretch;
+      cursor: pointer;
+    }
+
+    .frame {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      object-fit: cover;
+      background: rgba(0, 0, 0, 0.35);
+      min-height: 96px;
+      max-height: 160px;
+    }
+
+    .meta h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      line-height: 1.3;
+    }
+
+    .meta p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.4;
+      font-size: 14px;
+    }
+
+    .line {
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .line.answer { border-color: rgba(77, 240, 181, 0.45); }
+    .line.error { border-color: rgba(255, 143, 155, 0.5); color: #ffd6db; }
+
+    .line .text {
+      display: -webkit-box;
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      word-break: break-word;
+    }
+
+    .event.expanded .line .text {
+      display: block;
+      overflow: visible;
+      text-overflow: unset;
+      -webkit-line-clamp: unset;
+    }
+
+    .expand-hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      padding: 30px 16px;
+    }
+
+    @media (max-width: 980px) {
+      .top { grid-template-columns: 1fr; }
+      .status-row { justify-content: flex-start; }
+      .feed { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .event { gap: 12px; }
+    }
+
+    @media (max-width: 640px) {
+      .feed { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="top">
+      <div class="panel">
+        <h1 class="title">Airport AI Command Dashboard</h1>
+        <p class="subtitle">Live events from glasses-assisted questioning</p>
+      </div>
+      <div class="panel status-row">
+        <a class="pill link" href="/flights">Flights Page</a>
+        <div class="pill"><span id="liveDot" class="dot"></span><strong id="connState">connecting</strong></div>
+        <div class="pill">events: <strong id="eventCount">0</strong></div>
+        <div class="pill">last id: <strong id="lastId">0</strong></div>
+      </div>
+    </section>
+
+    <section class="feed" id="feed"></section>
+    <div id="empty" class="panel empty">No events yet. Ask from the phone app to populate this dashboard.</div>
+  </div>
+
+  <script>
+    const feed = document.getElementById("feed");
+    const empty = document.getElementById("empty");
+    const connState = document.getElementById("connState");
+    const liveDot = document.getElementById("liveDot");
+    const eventCount = document.getElementById("eventCount");
+    const lastIdEl = document.getElementById("lastId");
+
+    const MAX_VISIBLE_CARDS = 100;
+    let latestId = 0;
+    let total = 0;
+
+    function setConnection(ok, text) {
+      connState.textContent = text;
+      liveDot.classList.toggle("ok", ok);
+    }
+
+    function cardFor(event) {
+      const card = document.createElement("article");
+      card.className = "panel event";
+
+      const frameHtml = event.frameJpegBase64
+        ? `<img class="frame" alt="Captured frame" src="data:${event.imageMimeType || "image/jpeg"};base64,${event.frameJpegBase64}"/>`
+        : `<div class="frame" style="display:flex;align-items:center;justify-content:center;color:#90a8c8;">No frame</div>`;
+
+      const asked = event.question || "-";
+      const answer = event.answer || "(no answer)";
+      const err = event.aiError || "";
+      const when = event.receivedAtIso || "-";
+
+      card.innerHTML = `
+        <div>${frameHtml}</div>
+        <div class="meta">
+          <h3>#${event.id} • ${new Date(when).toLocaleString()}</h3>
+          <div class="line"><strong>Question:</strong><div class="text">${escapeHtml(asked)}</div></div>
+          <div class="line answer"><strong>Answer:</strong><div class="text">${escapeHtml(String(answer))}</div></div>
+          ${err ? `<div class="line error"><strong>AI Error:</strong><div class="text">${escapeHtml(String(err))}</div></div>` : ""}
+          <div class="expand-hint">Click card to expand</div>
+        </div>
+      `;
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", `Event ${event.id}. Click to expand or collapse.`);
+      card.addEventListener("click", () => toggleCardExpanded(card));
+      card.addEventListener("keydown", (evt) => {
+        if (evt.key === "Enter" || evt.key === " ") {
+          evt.preventDefault();
+          toggleCardExpanded(card);
+        }
+      });
+      return card;
+    }
+
+    function toggleCardExpanded(card) {
+      card.classList.toggle("expanded");
+      const hint = card.querySelector(".expand-hint");
+      if (hint) {
+        hint.textContent = card.classList.contains("expanded")
+          ? "Click card to collapse"
+          : "Click card to expand";
+      }
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function prependEvents(events) {
+      if (!events.length) return;
+      events.forEach((event) => {
+        const card = cardFor(event);
+        feed.prepend(card);
+      });
+
+      while (feed.children.length > MAX_VISIBLE_CARDS) {
+        feed.removeChild(feed.lastChild);
+      }
+
+      empty.style.display = "none";
+      total += events.length;
+      eventCount.textContent = String(total);
+    }
+
+    async function poll() {
+      try {
+        const resp = await fetch(`/api/events?since=${latestId}&limit=200`, { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        const payload = await resp.json();
+        const events = payload.events || [];
+
+        if (events.length > 0) {
+          latestId = events[events.length - 1].id;
+          lastIdEl.textContent = String(latestId);
+          prependEvents(events);
+        }
+
+        setConnection(true, "live");
+      } catch (error) {
+        setConnection(false, "reconnecting");
+      } finally {
+        window.setTimeout(poll, 1000);
+      }
+    }
+
+    poll();
+  </script>
+</body>
+</html>

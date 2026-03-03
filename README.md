@@ -1,4 +1,4 @@
-# Meta Wearables Device Access Toolkit for Android
+# Meta Wearables Device Access Toolkit for Androidn 
 
 [![Maven](https://img.shields.io/badge/Maven-0.2.1-brightgreen?logo=apachemaven)](https://github.com/orgs/facebook/packages?repo_name=meta-wearables-dat-android)
 [![Docs](https://img.shields.io/badge/API_Reference-0.2-blue?logo=meta)](https://wearables.developer.meta.com/docs/reference/android/dat/0.2)
