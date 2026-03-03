@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import threading
 import time
-from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,14 +18,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-EVENTS_MAXLEN = 500
-EVENTS: deque[dict[str, Any]] = deque(maxlen=EVENTS_MAXLEN)
-NEXT_ID = 1
 LOCK = threading.Lock()
 FLIGHTS_API_URL = "https://api.cas.certispsb.net/api-ext/v1/flights/departure/list"
 CAS_API_KEY = os.getenv("CAS_API_KEY", "").strip()
 FLIGHTS_CACHE: dict[str, dict[str, Any]] = {}
 CAS_THROTTLED_UNTIL = 0.0
+DB_CONN: sqlite3.Connection | None = None
 
 
 def _read_int_env(name: str, default: int) -> int:
@@ -41,6 +39,39 @@ def _read_int_env(name: str, default: int) -> int:
 
 CAS_CACHE_TTL_SECONDS = _read_int_env("CAS_CACHE_TTL_SECONDS", 45)
 CAS_THROTTLE_BACKOFF_SECONDS = _read_int_env("CAS_THROTTLE_BACKOFF_SECONDS", 45)
+EVENTS_MAXLEN = _read_int_env("EVENTS_MAXLEN", 500)
+
+
+def _events_db_path() -> Path:
+    raw = os.getenv("EVENTS_DB_PATH", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path(__file__).with_name("events.db")
+
+
+def init_events_db() -> None:
+    global DB_CONN
+    path = _events_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            received_at_iso TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    DB_CONN = conn
+
+
+def _db() -> sqlite3.Connection:
+    if DB_CONN is None:
+        raise RuntimeError("Events database not initialized")
+    return DB_CONN
 
 
 def utc_iso_now() -> str:
@@ -48,29 +79,75 @@ def utc_iso_now() -> str:
 
 
 def add_event(payload: dict[str, Any]) -> dict[str, Any]:
-    global NEXT_ID
+    received_at_iso = utc_iso_now()
+    payload_json = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
     with LOCK:
-        event = {
-            "id": NEXT_ID,
-            "receivedAtIso": utc_iso_now(),
-            **payload,
-        }
-        NEXT_ID += 1
-        EVENTS.append(event)
+        conn = _db()
+        cursor = conn.execute(
+            "INSERT INTO events (received_at_iso, payload_json) VALUES (?, ?)",
+            (received_at_iso, payload_json),
+        )
+        if EVENTS_MAXLEN > 0:
+            conn.execute(
+                """
+                DELETE FROM events
+                WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)
+                """,
+                (EVENTS_MAXLEN,),
+            )
+        conn.commit()
+
+    event = {
+        "id": int(cursor.lastrowid),
+        "receivedAtIso": received_at_iso,
+        **payload,
+    }
     return event
 
 
 def list_events(since: int | None, limit: int) -> list[dict[str, Any]]:
+    since_id = 0 if since is None else max(since, 0)
+    if limit < 1:
+        return []
+
     with LOCK:
-        items = list(EVENTS)
+        conn = _db()
+        rows = conn.execute(
+            """
+            SELECT id, received_at_iso, payload_json
+            FROM events
+            WHERE id > ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (since_id, limit),
+        ).fetchall()
 
-    if since is not None:
-        items = [event for event in items if int(event.get("id", 0)) > since]
-
-    if limit > 0:
-        items = items[-limit:]
+    items: list[dict[str, Any]] = []
+    for row in reversed(rows):
+        try:
+            payload = json.loads(row["payload_json"])
+        except json.JSONDecodeError:
+            payload = {"rawPayload": row["payload_json"]}
+        if not isinstance(payload, dict):
+            payload = {"payload": payload}
+        items.append(
+            {
+                "id": int(row["id"]),
+                "receivedAtIso": row["received_at_iso"],
+                **payload,
+            }
+        )
 
     return items
+
+
+def count_events() -> int:
+    with LOCK:
+        conn = _db()
+        row = conn.execute("SELECT COUNT(*) AS count FROM events").fetchone()
+    return int(row["count"]) if row is not None else 0
 
 
 def _cache_get(cache: dict[str, dict[str, Any]], key: str, allow_stale: bool = False) -> tuple[dict[str, Any] | None, bool]:
@@ -241,7 +318,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(
                 {
                     "ok": True,
-                    "events": len(EVENTS),
+                    "events": count_events(),
                     "casThrottled": _is_cas_throttled(),
                     "flightsCacheEntries": len(FLIGHTS_CACHE),
                 }
@@ -324,8 +401,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def run_server(host: str, port: int) -> None:
+    init_events_db()
+    events_db_path = _events_db_path().resolve()
     server = ThreadingHTTPServer((host, port), DashboardHandler)
-    print(f"Dashboard listening on http://{host}:{port}")
+    print(f"Dashboard listening on http://{host}:{port} (events db: {events_db_path})")
     server.serve_forever()
 
 

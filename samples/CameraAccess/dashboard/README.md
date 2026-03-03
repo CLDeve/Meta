@@ -13,6 +13,8 @@ Optional throttle settings:
 
 - `CAS_CACHE_TTL_SECONDS` (default `45`)
 - `CAS_THROTTLE_BACKOFF_SECONDS` (default `45`)
+- `EVENTS_MAXLEN` (default `500`, keeps the newest N events)
+- `EVENTS_DB_PATH` (default `./events.db` beside `server.py`)
 
 Open in browser:
 
@@ -34,8 +36,13 @@ OPENAI_API_KEY="<your-openai-api-key>" \
 
 Endpoints:
 
-- `POST /api/events` stores up to 500 recent Q/A events in memory.
+- `POST /api/events` stores Q/A events in SQLite and keeps the latest `EVENTS_MAXLEN`.
 - `GET /api/events` reads stored events.
 - `GET /api/flights?date=YYYY-MM-DD&type=scheduled&flightno=` proxies:
   `https://api.cas.certispsb.net/api-ext/v1/flights/departure/list`
   (requires env var `CAS_API_KEY` when starting server; returns cached data when upstream is throttled)
+
+## Render persistence note
+
+For `onrender.com`, set `EVENTS_DB_PATH` to a mounted persistent disk path
+(for example `/var/data/events.db`) so records survive service restarts/redeploys.
