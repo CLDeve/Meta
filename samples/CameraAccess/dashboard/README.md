@@ -9,6 +9,11 @@ cd SEE/meta-wearables-dat-android/samples/CameraAccess/dashboard
 CAS_API_KEY="<your-x-api-key>" python3 server.py --host 0.0.0.0 --port 5055
 ```
 
+Optional throttle settings:
+
+- `CAS_CACHE_TTL_SECONDS` (default `45`)
+- `CAS_THROTTLE_BACKOFF_SECONDS` (default `45`)
+
 Open in browser:
 
 - `http://localhost:5055` (same laptop)
@@ -33,4 +38,4 @@ Endpoints:
 - `GET /api/events` reads stored events.
 - `GET /api/flights?date=YYYY-MM-DD&type=scheduled&flightno=` proxies:
   `https://api.cas.certispsb.net/api-ext/v1/flights/departure/list`
-  (requires env var `CAS_API_KEY` when starting server)
+  (requires env var `CAS_API_KEY` when starting server; returns cached data when upstream is throttled)

@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import threading
+import time
 from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -23,6 +24,23 @@ NEXT_ID = 1
 LOCK = threading.Lock()
 FLIGHTS_API_URL = "https://api.cas.certispsb.net/api-ext/v1/flights/departure/list"
 CAS_API_KEY = os.getenv("CAS_API_KEY", "").strip()
+FLIGHTS_CACHE: dict[str, dict[str, Any]] = {}
+CAS_THROTTLED_UNTIL = 0.0
+
+
+def _read_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(0, value)
+
+
+CAS_CACHE_TTL_SECONDS = _read_int_env("CAS_CACHE_TTL_SECONDS", 45)
+CAS_THROTTLE_BACKOFF_SECONDS = _read_int_env("CAS_THROTTLE_BACKOFF_SECONDS", 45)
 
 
 def utc_iso_now() -> str:
@@ -55,11 +73,75 @@ def list_events(since: int | None, limit: int) -> list[dict[str, Any]]:
     return items
 
 
+def _cache_get(cache: dict[str, dict[str, Any]], key: str, allow_stale: bool = False) -> tuple[dict[str, Any] | None, bool]:
+    now = time.time()
+    with LOCK:
+        entry = cache.get(key)
+    if not entry:
+        return None, False
+
+    expires_at = float(entry.get("expiresAtEpoch", 0.0))
+    payload = entry.get("payload")
+    if not isinstance(payload, dict):
+        return None, False
+
+    stale = now > expires_at
+    if stale and not allow_stale:
+        return None, True
+    return payload, stale
+
+
+def _cache_set(cache: dict[str, dict[str, Any]], key: str, payload: dict[str, Any]) -> None:
+    if CAS_CACHE_TTL_SECONDS <= 0:
+        return
+    with LOCK:
+        cache[key] = {
+            "expiresAtEpoch": time.time() + CAS_CACHE_TTL_SECONDS,
+            "payload": payload,
+        }
+
+
+def _is_cas_throttled() -> bool:
+    with LOCK:
+        return time.time() < CAS_THROTTLED_UNTIL
+
+
+def _mark_cas_throttled() -> None:
+    global CAS_THROTTLED_UNTIL
+    with LOCK:
+        CAS_THROTTLED_UNTIL = max(CAS_THROTTLED_UNTIL, time.time() + CAS_THROTTLE_BACKOFF_SECONDS)
+
+
+def _clear_cas_throttle() -> None:
+    global CAS_THROTTLED_UNTIL
+    with LOCK:
+        CAS_THROTTLED_UNTIL = 0.0
+
+
 def fetch_departures(date: str, flight_type: str, flight_no: str) -> tuple[int, dict[str, Any]]:
     if not CAS_API_KEY:
         return HTTPStatus.BAD_REQUEST, {
             "ok": False,
             "error": "Missing CAS_API_KEY. Set env var CAS_API_KEY before starting server.",
+        }
+
+    cache_key = f"{date}|{flight_type}|{flight_no}"
+    cached_payload, _ = _cache_get(FLIGHTS_CACHE, cache_key, allow_stale=False)
+    if cached_payload is not None:
+        payload = dict(cached_payload)
+        payload["cache"] = {"hit": True, "stale": False}
+        return HTTPStatus.OK, payload
+
+    if _is_cas_throttled():
+        stale_payload, stale = _cache_get(FLIGHTS_CACHE, cache_key, allow_stale=True)
+        if stale_payload is not None and stale:
+            payload = dict(stale_payload)
+            payload["cache"] = {"hit": True, "stale": True}
+            payload["warning"] = "CAS API is temporarily throttled. Showing cached data."
+            return HTTPStatus.OK, payload
+        return HTTPStatus.TOO_MANY_REQUESTS, {
+            "ok": False,
+            "error": "CAS API is temporarily throttled. Retry shortly.",
         }
 
     query = urlencode({"date": date, "type": flight_type, "flightno": flight_no})
@@ -77,13 +159,24 @@ def fetch_departures(date: str, flight_type: str, flight_no: str) -> tuple[int, 
         with urlopen(request, timeout=20) as response:
             body = response.read().decode("utf-8")
             payload = json.loads(body)
-            return HTTPStatus.OK, {
+            result = {
                 "ok": True,
                 "query": {"date": date, "type": flight_type, "flightno": flight_no},
                 "data": payload,
             }
+            _cache_set(FLIGHTS_CACHE, cache_key, result)
+            _clear_cas_throttle()
+            return HTTPStatus.OK, result
     except HTTPError as err:
         body = err.read().decode("utf-8", errors="replace")
+        if err.code in {HTTPStatus.FORBIDDEN, HTTPStatus.TOO_MANY_REQUESTS}:
+            _mark_cas_throttled()
+            stale_payload, stale = _cache_get(FLIGHTS_CACHE, cache_key, allow_stale=True)
+            if stale_payload is not None and stale:
+                payload = dict(stale_payload)
+                payload["cache"] = {"hit": True, "stale": True}
+                payload["warning"] = "CAS API is throttled/forbidden. Showing cached data."
+                return HTTPStatus.OK, payload
         return err.code, {"ok": False, "error": "Upstream HTTP error", "status": err.code, "body": body}
     except URLError as err:
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"Upstream connection failed: {err.reason}"}
@@ -145,7 +238,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/healthz":
-            self._send_json({"ok": True, "events": len(EVENTS)})
+            self._send_json(
+                {
+                    "ok": True,
+                    "events": len(EVENTS),
+                    "casThrottled": _is_cas_throttled(),
+                    "flightsCacheEntries": len(FLIGHTS_CACHE),
+                }
+            )
             return
 
         if parsed.path == "/api/events":
