@@ -44,7 +44,7 @@ A sample Android application demonstrating integration with Meta Wearables Devic
 This sample supports voice questions during streaming and can forward each question/answer to your command centre endpoint.
 
 1. Set `COMMAND_CENTER_URL` to your backend endpoint (for example `https://your-command-centre.example.com/api/events`).
-1. Set `OLLAMA_BASE_URL` and `OLLAMA_MODEL` for visual answering.
+1. Set `OPENAI_BASE_URL`, `OPENAI_MODEL`, and `OPENAI_API_KEY` for visual answering.
 1. Build and run the app.
 1. In stream view, tap **Voice ask**, speak your question, and wait for the answer overlay.
 1. On successful answer, the app POSTs JSON to `COMMAND_CENTER_URL`.
@@ -68,8 +68,9 @@ Build/install Android app with dashboard endpoint:
 
 ```bash
 COMMAND_CENTER_URL="http://<your-laptop-lan-ip>:5055/api/events" \
-OLLAMA_BASE_URL="http://<your-laptop-lan-ip>:11434" \
-OLLAMA_MODEL="llava" \
+OPENAI_BASE_URL="https://api.openai.com/v1" \
+OPENAI_MODEL="gpt-4o-mini" \
+OPENAI_API_KEY="<your-openai-api-key>" \
 ./gradlew :app:installDebug --rerun-tasks
 ```
 
@@ -91,8 +92,8 @@ For issues related to the Meta Wearables Device Access Toolkit, please refer to 
 If you do not get a reply after asking:
 
 1. Confirm the stream preview is visible before asking (reply requires a current frame).
-1. On a physical phone, do not use `http://10.0.2.2:11434` for `OLLAMA_BASE_URL` (that host is emulator-only).
-1. Use a reachable server URL on your network, for example `http://192.168.x.x:11434`.
+1. Confirm your phone has internet access.
+1. Rebuild with a valid `OPENAI_API_KEY`.
 
 ## License
 

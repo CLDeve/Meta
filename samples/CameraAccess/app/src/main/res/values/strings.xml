@@ -37,10 +37,10 @@
     <string name ="capture_photo" description="Capture Photo">Capture Photo</string>
     <string name="share" description="Share">Share</string>
 
-    <!-- Describe with Ollama -->
+    <!-- Describe with AI -->
     <string name="describe_button_title" description="Describe what the camera sees">Describe</string>
     <string name="describe_button_short_title" description="Compact describe button label">Ask</string>
-    <string name="describe_loading" description="Loading description">Asking Ollama&#8230;</string>
+    <string name="describe_loading" description="Loading description">Asking AI&#8230;</string>
     <string name="describe_result_label" description="Label for description result">Answer:</string>
     <string name="describe_error_prefix" description="Prefix for errors">Error:</string>
     <string name="voice_button_title" description="Voice trigger for describe">Voice ask</string>

@@ -32,7 +32,6 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.os.Bundle
-import android.os.Build
 import android.speech.tts.TextToSpeech
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
@@ -81,8 +80,8 @@ class StreamViewModel(
     private const val TAG = "StreamViewModel"
     private const val DEFAULT_DESCRIBE_QUESTION = "What is in front of me?"
     private const val MAX_VOICE_RETRIES = 1
-    private const val OLLAMA_REQUEST_JPEG_QUALITY = 60
-    private const val OLLAMA_READ_TIMEOUT_MS = 45_000
+    private const val AI_REQUEST_JPEG_QUALITY = 60
+    private const val AI_READ_TIMEOUT_MS = 45_000
     private const val STREAM_FPS = 15
     private const val PREVIEW_JPEG_QUALITY = 85
     private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
@@ -207,8 +206,8 @@ class StreamViewModel(
       }
 
       val result =
-          runCatching { queryOllama(frame, normalizedQuestion) }
-              .onFailure { Log.e(TAG, "Ollama describe failed", it) }
+          runCatching { queryOpenAi(frame, normalizedQuestion) }
+              .onFailure { Log.e(TAG, "OpenAI describe failed", it) }
 
       val describeResult = result.getOrNull()
       val describeError = result.exceptionOrNull()?.message
@@ -381,16 +380,21 @@ class StreamViewModel(
     }
   }
 
-  private suspend fun queryOllama(bitmap: Bitmap, question: String): String = withContext(Dispatchers.IO) {
+  private suspend fun queryOpenAi(bitmap: Bitmap, question: String): String = withContext(Dispatchers.IO) {
+    val apiKey = BuildConfig.OPENAI_API_KEY.trim()
+    if (apiKey.isEmpty()) {
+      throw IOException("OPENAI_API_KEY is missing. Rebuild app with OPENAI_API_KEY set.")
+    }
+
     val encodedImage =
         ByteArrayOutputStream().use { stream ->
-          bitmap.compress(Bitmap.CompressFormat.JPEG, OLLAMA_REQUEST_JPEG_QUALITY, stream)
+          bitmap.compress(Bitmap.CompressFormat.JPEG, AI_REQUEST_JPEG_QUALITY, stream)
           Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
         }
     val payload =
         JSONObject()
-            .put("model", BuildConfig.OLLAMA_MODEL)
-            .put("stream", false)
+            .put("model", BuildConfig.OPENAI_MODEL)
+            .put("max_tokens", 220)
             .put(
                 "messages",
                 JSONArray().put(
@@ -398,27 +402,39 @@ class StreamViewModel(
                         .put("role", "user")
                         .put(
                             "content",
-                            "$question Answer briefly using only what is visible in the camera image.",
+                            JSONArray()
+                                .put(
+                                    JSONObject()
+                                        .put("type", "text")
+                                        .put(
+                                            "text",
+                                            "$question Answer briefly using only what is visible in the camera image.",
+                                        )
+                                )
+                                .put(
+                                    JSONObject()
+                                        .put("type", "image_url")
+                                        .put(
+                                            "image_url",
+                                            JSONObject()
+                                                .put("url", "data:image/jpeg;base64,$encodedImage"),
+                                        )
+                                ),
                         )
-                        .put("images", JSONArray().put(encodedImage))
                 )
             )
             .toString()
 
-    val baseUrl = BuildConfig.OLLAMA_BASE_URL.trim().trimEnd('/')
-    if (baseUrl.contains("10.0.2.2") && !isProbablyEmulator()) {
-      throw IOException(
-          "OLLAMA_BASE_URL is $baseUrl. 10.0.2.2 works only on Android emulator; use your server LAN/IP URL for a physical phone."
-      )
-    }
-    val url = URL("$baseUrl/api/chat")
+    val baseUrl = BuildConfig.OPENAI_BASE_URL.trim().trimEnd('/')
+    val url = URL("$baseUrl/chat/completions")
     val connection =
         (url.openConnection() as HttpURLConnection).apply {
           requestMethod = "POST"
           setRequestProperty("Content-Type", "application/json")
+          setRequestProperty("Authorization", "Bearer $apiKey")
           doOutput = true
           connectTimeout = 15_000
-          readTimeout = OLLAMA_READ_TIMEOUT_MS
+          readTimeout = AI_READ_TIMEOUT_MS
         }
 
     connection.outputStream.use { output -> output.write(payload.toByteArray()) }
@@ -427,15 +443,35 @@ class StreamViewModel(
     val responseStream = if (code in 200..299) connection.inputStream else connection.errorStream
     val responseBody = responseStream.bufferedReader().use { it.readText() }
     if (code !in 200..299) {
-      throw IOException("Ollama error $code at $baseUrl: $responseBody")
+      throw IOException("OpenAI error $code: $responseBody")
     }
 
     try {
       val root = JSONObject(responseBody)
-      val message = root.getJSONObject("message")
-      message.getString("content")
+      val choices = root.optJSONArray("choices")
+      val firstChoice = choices?.optJSONObject(0) ?: throw IOException("OpenAI returned no choices")
+      val message = firstChoice.optJSONObject("message") ?: throw IOException("OpenAI response missing message")
+      val content = message.opt("content")
+      when (content) {
+        is String -> content
+        is JSONArray -> {
+          val text = buildString {
+            for (i in 0 until content.length()) {
+              val part = content.optJSONObject(i) ?: continue
+              val maybeText = part.optString("text").ifBlank { part.optString("content") }
+              if (maybeText.isNotBlank()) {
+                if (isNotEmpty()) append('\n')
+                append(maybeText)
+              }
+            }
+          }
+          if (text.isBlank()) throw IOException("OpenAI response had empty content")
+          text
+        }
+        else -> throw IOException("OpenAI response content format is unsupported")
+      }
     } catch (e: JSONException) {
-      throw IOException("Unexpected Ollama response: $responseBody", e)
+      throw IOException("Unexpected OpenAI response: $responseBody", e)
     }
   }
 
@@ -513,14 +549,6 @@ class StreamViewModel(
             Log.w(TAG, "TextToSpeech initialization failed: $status")
           }
         }
-  }
-
-  private fun isProbablyEmulator(): Boolean {
-    return Build.FINGERPRINT.startsWith("generic") ||
-        Build.FINGERPRINT.lowercase().contains("emulator") ||
-        Build.MODEL.contains("Emulator") ||
-        Build.MANUFACTURER.contains("Genymotion") ||
-        Build.BRAND.startsWith("generic")
   }
 
   private fun handleVideoFrame(videoFrame: VideoFrame) {

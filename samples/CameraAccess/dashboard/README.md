@@ -21,8 +21,9 @@ Build/install the app with:
 
 ```bash
 COMMAND_CENTER_URL="http://<laptop-lan-ip>:5055/api/events" \
-OLLAMA_BASE_URL="http://<laptop-lan-ip>:11434" \
-OLLAMA_MODEL="llava" \
+OPENAI_BASE_URL="https://api.openai.com/v1" \
+OPENAI_MODEL="gpt-4o-mini" \
+OPENAI_API_KEY="<your-openai-api-key>" \
 ./gradlew :app:installDebug --rerun-tasks
 ```
 

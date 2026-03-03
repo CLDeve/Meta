@@ -24,11 +24,13 @@ android {
     targetSdk = 34
     versionCode = 1
     versionName = "1.0"
-    val ollamaBaseUrl = System.getenv("OLLAMA_BASE_URL") ?: "http://10.0.2.2:11434"
-    val ollamaModel = System.getenv("OLLAMA_MODEL") ?: "llava"
+    val openAiBaseUrl = System.getenv("OPENAI_BASE_URL") ?: "https://api.openai.com/v1"
+    val openAiModel = System.getenv("OPENAI_MODEL") ?: "gpt-4o-mini"
+    val openAiApiKey = System.getenv("OPENAI_API_KEY") ?: ""
     val commandCenterUrl = System.getenv("COMMAND_CENTER_URL") ?: ""
-    buildConfigField("String", "OLLAMA_BASE_URL", "\"$ollamaBaseUrl\"")
-    buildConfigField("String", "OLLAMA_MODEL", "\"$ollamaModel\"")
+    buildConfigField("String", "OPENAI_BASE_URL", "\"$openAiBaseUrl\"")
+    buildConfigField("String", "OPENAI_MODEL", "\"$openAiModel\"")
+    buildConfigField("String", "OPENAI_API_KEY", "\"$openAiApiKey\"")
     buildConfigField("String", "COMMAND_CENTER_URL", "\"$commandCenterUrl\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
