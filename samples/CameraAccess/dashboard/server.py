@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 LOCK = threading.Lock()
 FLIGHTS_API_URL = "https://api.cas.certispsb.net/api-ext/v1/flights/departure/list"
 CAS_API_KEY = os.getenv("CAS_API_KEY", "").strip()
+ADMIN_TOKEN = os.getenv("DASHBOARD_ADMIN_TOKEN", "").strip()
 FLIGHTS_CACHE: dict[str, dict[str, Any]] = {}
 CAS_THROTTLED_UNTIL = 0.0
 DB_CONN: sqlite3.Connection | None = None
@@ -150,6 +151,16 @@ def count_events() -> int:
     return int(row["count"]) if row is not None else 0
 
 
+def clear_events() -> int:
+    with LOCK:
+        conn = _db()
+        row = conn.execute("SELECT COUNT(*) AS count FROM events").fetchone()
+        deleted = int(row["count"]) if row is not None else 0
+        conn.execute("DELETE FROM events")
+        conn.commit()
+    return deleted
+
+
 def _cache_get(cache: dict[str, dict[str, Any]], key: str, allow_stale: bool = False) -> tuple[dict[str, Any] | None, bool]:
     now = time.time()
     with LOCK:
@@ -269,7 +280,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
@@ -398,6 +409,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         event = add_event(payload)
         self._send_json({"ok": True, "event": event}, status=HTTPStatus.CREATED)
+
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/events":
+            self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        provided_token = self.headers.get("X-Admin-Token", "").strip()
+        if ADMIN_TOKEN and provided_token != ADMIN_TOKEN:
+            self._send_json({"ok": False, "error": "Unauthorized"}, status=HTTPStatus.UNAUTHORIZED)
+            return
+
+        deleted = clear_events()
+        self._send_json({"ok": True, "deleted": deleted})
 
 
 def run_server(host: str, port: int) -> None:

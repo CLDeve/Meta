@@ -15,6 +15,7 @@ Optional throttle settings:
 - `CAS_THROTTLE_BACKOFF_SECONDS` (default `45`)
 - `EVENTS_MAXLEN` (default `500`, keeps the newest N events)
 - `EVENTS_DB_PATH` (default `./events.db` beside `server.py`)
+- `DASHBOARD_ADMIN_TOKEN` (optional; required for `DELETE /api/events` if set)
 
 Open in browser:
 
@@ -38,6 +39,8 @@ Endpoints:
 
 - `POST /api/events` stores Q/A events in SQLite and keeps the latest `EVENTS_MAXLEN`.
 - `GET /api/events` reads stored events.
+- `DELETE /api/events` clears all stored events.
+  If `DASHBOARD_ADMIN_TOKEN` is set, send it as header `X-Admin-Token`.
 - `GET /api/flights?date=YYYY-MM-DD&type=scheduled&flightno=` proxies:
   `https://api.cas.certispsb.net/api-ext/v1/flights/departure/list`
   (requires env var `CAS_API_KEY` when starting server; returns cached data when upstream is throttled)
