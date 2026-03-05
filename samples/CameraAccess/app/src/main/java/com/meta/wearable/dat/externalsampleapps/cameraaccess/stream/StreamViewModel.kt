@@ -86,6 +86,7 @@ class StreamViewModel(
     private const val STREAM_FPS = 15
     private const val PREVIEW_JPEG_QUALITY = 85
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
+    private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
     private const val HANDS_FREE_STOP_MESSAGE = "Hands-free mode stopped."
     private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
     private const val COMMAND_CENTER_DISABLED =
@@ -354,6 +355,14 @@ class StreamViewModel(
               return
             }
 
+            if (error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED) {
+              _uiState.update { it.copy(isListening = false, describeError = speechErrorMessage(error)) }
+              if (_uiState.value.isHandsFreeModeEnabled) {
+                restartHandsFreeListening(HANDS_FREE_RECONNECT_DELAY_MS)
+              }
+              return
+            }
+
             val canRetry =
                 (error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) &&
@@ -469,6 +478,9 @@ class StreamViewModel(
       SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected in time (6)."
       SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
           "Speech service network issue. Check internet."
+      SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> "Too many voice requests. Wait a moment and try again."
+      SpeechRecognizer.ERROR_SERVER_DISCONNECTED ->
+          "Speech service disconnected (11). Retrying..."
       SpeechRecognizer.ERROR_AUDIO -> "Microphone/audio input error."
       SpeechRecognizer.ERROR_CLIENT -> "Speech client error. Try again."
       SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required."
