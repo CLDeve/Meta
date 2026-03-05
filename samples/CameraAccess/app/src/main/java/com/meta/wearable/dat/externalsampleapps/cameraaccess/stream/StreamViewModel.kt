@@ -92,7 +92,6 @@ class StreamViewModel(
 
   companion object {
     private const val TAG = "StreamViewModel"
-    private const val DEFAULT_DESCRIBE_QUESTION = "What is in front of me?"
     private const val MAX_VOICE_RETRIES = 1
     private const val AI_REQUEST_JPEG_QUALITY = 60
     private const val AI_READ_TIMEOUT_MS = 45_000
@@ -205,9 +204,23 @@ class StreamViewModel(
     }
   }
 
-  fun describeCurrentFrame(question: String = DEFAULT_DESCRIBE_QUESTION) {
+  fun describeCurrentFrame(question: String? = null) {
     val frame = _uiState.value.videoFrame
-    val normalizedQuestion = question.trim().ifBlank { DEFAULT_DESCRIBE_QUESTION }
+    val normalizedQuestion = question?.trim().orEmpty()
+    if (normalizedQuestion.isEmpty()) {
+      val missingQuestionError = "Please type or speak your question first."
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = null,
+            describeError = missingQuestionError,
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+      appendChatMessage(ChatRole.ASSISTANT, "Error: $missingQuestionError")
+      return
+    }
     appendChatMessage(ChatRole.USER, normalizedQuestion)
     if (frame == null) {
       val noFrameError = "No frame available yet"
