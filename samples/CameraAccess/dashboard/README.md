@@ -13,7 +13,7 @@ Optional throttle settings:
 
 - `CAS_CACHE_TTL_SECONDS` (default `45`)
 - `CAS_THROTTLE_BACKOFF_SECONDS` (default `45`)
-- `EVENTS_MAXLEN` (default `500`, keeps the newest N events)
+- `EVENTS_MAXLEN` (default `0`, no auto-trim; set >0 to keep only newest N events)
 - `EVENTS_DB_PATH` (default `./events.db` beside `server.py`)
 - `DASHBOARD_ADMIN_TOKEN` (optional; required for `DELETE /api/events` if set)
 - `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` (optional; enables OpenSky OAuth2 mode)
