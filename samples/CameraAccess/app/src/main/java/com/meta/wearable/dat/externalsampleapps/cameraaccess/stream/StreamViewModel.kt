@@ -20,6 +20,8 @@ package com.meta.wearable.dat.externalsampleapps.cameraaccess.stream
 import android.app.Application
 import android.content.Intent
 import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
@@ -33,6 +35,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
@@ -109,9 +112,13 @@ class StreamViewModel(
   private var timerJob: Job? = null
   private var speechRecognizer: SpeechRecognizer? = null
   private var latestVoiceContext: Context? = null
+  private var audioManager: AudioManager? = null
+  private var previousAudioMode: Int? = null
+  private var hasForcedBluetoothVoiceRoute = false
   private var suppressNextVoiceError = false
   private var voiceRetryCount: Int = 0
   private var textToSpeech: TextToSpeech? = null
+  private var isSpeakingAnswer = false
 
   init {
     // Collect timer state
@@ -219,12 +226,10 @@ class StreamViewModel(
       val describeResult = result.getOrNull()
       val describeError = result.exceptionOrNull()?.message
       val handsFreeEnabled = _uiState.value.isHandsFreeModeEnabled
-      if (!handsFreeEnabled) {
-        if (!describeResult.isNullOrBlank()) {
-          speakText(describeResult)
-        } else if (!describeError.isNullOrBlank()) {
-          speakText("I could not get an answer right now. Please try again.")
-        }
+      if (!describeResult.isNullOrBlank()) {
+        speakText(describeResult)
+      } else if (!describeError.isNullOrBlank()) {
+        speakText("I could not get an answer right now. Please try again.")
       }
       var commandCenterStatus: String? = null
       var commandCenterError: String? = null
@@ -245,7 +250,7 @@ class StreamViewModel(
         )
       }
 
-      if (handsFreeEnabled) {
+      if (handsFreeEnabled && !isSpeakingAnswer) {
         restartHandsFreeListening()
       }
     }
@@ -314,6 +319,7 @@ class StreamViewModel(
 
   fun startVoiceDescribe(context: Context) {
     latestVoiceContext = context.applicationContext
+    prepareVoiceAudioRoute(context)
     if (!SpeechRecognizer.isRecognitionAvailable(context)) {
       _uiState.update {
         it.copy(
@@ -435,6 +441,7 @@ class StreamViewModel(
     suppressNextVoiceError = true
     speechRecognizer?.stopListening()
     speechRecognizer?.cancel()
+    clearVoiceAudioRoute()
     _uiState.update {
       it.copy(
           isListening = false,
@@ -470,6 +477,46 @@ class StreamViewModel(
         normalized == "stop hands-free" ||
         normalized == "cancel voice mode" ||
         normalized == "exit voice mode"
+  }
+
+  private fun prepareVoiceAudioRoute(context: Context) {
+    val manager = context.getSystemService(AudioManager::class.java) ?: return
+    audioManager = manager
+    if (previousAudioMode == null) {
+      previousAudioMode = manager.mode
+    }
+    manager.mode = AudioManager.MODE_IN_COMMUNICATION
+    val bluetoothDevice =
+        manager.availableCommunicationDevices.firstOrNull { device ->
+          device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+              device.type == AudioDeviceInfo.TYPE_BLE_HEADSET
+        }
+    if (bluetoothDevice == null) {
+      hasForcedBluetoothVoiceRoute = false
+      Log.i(TAG, "No Bluetooth communication device found for voice input; using phone mic.")
+      return
+    }
+    val routed =
+        runCatching { manager.setCommunicationDevice(bluetoothDevice) }
+            .onFailure { Log.w(TAG, "Failed to route voice input to Bluetooth device", it) }
+            .getOrDefault(false)
+    hasForcedBluetoothVoiceRoute = routed
+    if (routed) {
+      Log.i(TAG, "Voice input routed to Bluetooth device: ${bluetoothDevice.productName}")
+    } else {
+      Log.i(TAG, "Bluetooth route rejected; using phone mic fallback.")
+    }
+  }
+
+  private fun clearVoiceAudioRoute() {
+    val manager = audioManager ?: return
+    if (hasForcedBluetoothVoiceRoute) {
+      runCatching { manager.clearCommunicationDevice() }
+          .onFailure { Log.w(TAG, "Failed to clear Bluetooth communication route", it) }
+    }
+    previousAudioMode?.let { mode -> manager.mode = mode }
+    previousAudioMode = null
+    hasForcedBluetoothVoiceRoute = false
   }
 
   private fun speechErrorMessage(error: Int): String {
@@ -642,6 +689,8 @@ class StreamViewModel(
     val app = getApplication<Application>()
     val existing = textToSpeech
     if (existing != null) {
+      ensureTtsProgressListener(existing)
+      isSpeakingAnswer = true
       existing.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
       return
     }
@@ -649,16 +698,52 @@ class StreamViewModel(
     textToSpeech =
         TextToSpeech(app) { status ->
           if (status == TextToSpeech.SUCCESS) {
-            val setDefaultResult = textToSpeech?.setLanguage(Locale.getDefault()) ?: TextToSpeech.LANG_MISSING_DATA
+            val engine = textToSpeech ?: return@TextToSpeech
+            ensureTtsProgressListener(engine)
+            val setDefaultResult = engine.setLanguage(Locale.getDefault())
             if (setDefaultResult == TextToSpeech.LANG_MISSING_DATA ||
                 setDefaultResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-              textToSpeech?.setLanguage(Locale.US)
+              engine.setLanguage(Locale.US)
             }
-            textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
+            isSpeakingAnswer = true
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
           } else {
             Log.w(TAG, "TextToSpeech initialization failed: $status")
+            isSpeakingAnswer = false
           }
         }
+  }
+
+  private fun ensureTtsProgressListener(engine: TextToSpeech) {
+    engine.setOnUtteranceProgressListener(
+        object : UtteranceProgressListener() {
+          override fun onStart(utteranceId: String?) {
+            isSpeakingAnswer = true
+          }
+
+          override fun onDone(utteranceId: String?) {
+            isSpeakingAnswer = false
+            if (_uiState.value.isHandsFreeModeEnabled) {
+              restartHandsFreeListening(250L)
+            }
+          }
+
+          @Deprecated("Deprecated in Java")
+          override fun onError(utteranceId: String?) {
+            isSpeakingAnswer = false
+            if (_uiState.value.isHandsFreeModeEnabled) {
+              restartHandsFreeListening(250L)
+            }
+          }
+
+          override fun onError(utteranceId: String?, errorCode: Int) {
+            isSpeakingAnswer = false
+            if (_uiState.value.isHandsFreeModeEnabled) {
+              restartHandsFreeListening(250L)
+            }
+          }
+        }
+    )
   }
 
   private fun handleVideoFrame(videoFrame: VideoFrame) {
@@ -813,6 +898,7 @@ class StreamViewModel(
     streamTimer.cleanup()
     speechRecognizer?.destroy()
     speechRecognizer = null
+    clearVoiceAudioRoute()
     textToSpeech?.stop()
     textToSpeech?.shutdown()
     textToSpeech = null
