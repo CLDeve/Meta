@@ -10,13 +10,14 @@ package com.meta.wearable.dat.externalsampleapps.cameraaccess.ui
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Button
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,10 +35,11 @@ fun CircleButton(
     content: @Composable RowScope.() -> Unit,
 ) {
   Button(
-      modifier = modifier.aspectRatio(1f),
+      modifier = modifier.size(44.dp),
       onClick = onClick,
-      colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+      colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183357), contentColor = Color.White),
       shape = CircleShape,
+      border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
       contentPadding = PaddingValues(0.dp),
       content = content,
   )
@@ -53,12 +55,12 @@ fun TimerButton(
       Icon(
           imageVector = Icons.Filled.Timer,
           contentDescription = stringResource(timerMode.labelId),
-          tint = Color.Black,
+          tint = Color.White,
       )
     } else {
       Text(
           text = stringResource(timerMode.labelId),
-          color = Color.Black,
+          color = Color.White,
       )
     }
   }
@@ -70,7 +72,7 @@ fun CaptureButton(onClick: () -> Unit) {
     Icon(
         imageVector = Icons.Filled.PhotoCamera,
         contentDescription = stringResource(R.string.capture_photo),
-        tint = Color.Black,
+        tint = Color.White,
     )
   }
 }

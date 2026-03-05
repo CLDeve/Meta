@@ -48,7 +48,7 @@
     <string name="voice_listening_button" description="Voice button while listening">Listening…</string>
     <string name="voice_listening_button_short" description="Compact voice listening button label">Listening…</string>
     <string name="voice_listening" description="Listening status">Listening for your question…</string>
-    <string name="hands_free_button_short_title" description="Compact hands-free toggle button label">Hands-free</string>
+    <string name="hands_free_button_short_title" description="Compact hands-free toggle button label">HF</string>
     <string name="hands_free_button_on_short_title" description="Compact hands-free enabled button label">HF On</string>
     <string name="hands_free_mode_active" description="Hands-free mode active hint">Hands-free is on. Say \"stop listening\" to exit.</string>
     <string name="voice_heard_label" description="Prefix for heard voice question">You asked:</string>
@@ -56,6 +56,9 @@
     <string name="chat_title" description="Title for in-app chat panel">Chat</string>
     <string name="chat_input_placeholder" description="Placeholder in chat text input">Type your question…</string>
     <string name="chat_send_button" description="Send chat question button">Send</string>
+    <string name="chat_show_button" description="Expand chat area">Open</string>
+    <string name="chat_hide_button" description="Collapse chat area">Hide</string>
+    <string name="chat_collapsed_hint" description="Hint when chat panel is collapsed">Tap Open to chat</string>
 
     <!-- Mock Device Kit Screen -->
     <string name="mock_device_kit_title" description="Mock Device Kit Title">Mock Device Kit</string>
