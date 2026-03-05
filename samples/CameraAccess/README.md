@@ -81,6 +81,12 @@ Command centre payload format:
   "timestampEpochMs": 1730905012345,
   "question": "Is gate A12 crowded?",
   "answer": "The camera view shows ...",
+  "intent": "open_queue_relief_lane",
+  "commandCard": {
+    "title": "Queue relief at A12",
+    "action": "Open support lane and reassign one officer for crowd flow control.",
+    "priority": "medium"
+  },
   "source": "meta-wearables-cameraaccess"
 }
 ```

@@ -153,7 +153,20 @@
     }
 
     .line.answer { border-color: rgba(77, 240, 181, 0.45); }
+    .line.command { border-color: rgba(68, 165, 255, 0.55); }
     .line.error { border-color: rgba(255, 143, 155, 0.5); color: #ffd6db; }
+    .priority-tag {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      font-size: 10px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: #d8e8ff;
+      background: rgba(68, 165, 255, 0.2);
+    }
 
     .line .text {
       display: -webkit-box;
@@ -245,6 +258,16 @@
       const answer = event.answer || "(no answer)";
       const err = event.aiError || "";
       const when = event.receivedAtIso || "-";
+      const command = (event.commandCard && typeof event.commandCard === "object") ? event.commandCard : null;
+      const intentTitle = command?.title || command?.intent || event.intent || "";
+      const commandAction = command?.action || "";
+      const commandGate = command?.targetGate ? ` • Gate ${escapeHtml(String(command.targetGate))}` : "";
+      const priorityLabel = command?.priority
+        ? `<span class="priority-tag">${escapeHtml(String(command.priority))}</span>`
+        : "";
+      const commandHtml = intentTitle
+        ? `<div class="line command"><strong>Command:${priorityLabel}</strong><div class="text">${escapeHtml(String(intentTitle))}${commandGate}</div>${commandAction ? `<div class="text">${escapeHtml(String(commandAction))}</div>` : ""}</div>`
+        : "";
 
       card.innerHTML = `
         <div>${frameHtml}</div>
@@ -252,6 +275,7 @@
           <h3>#${event.id} • ${new Date(when).toLocaleString()}</h3>
           <div class="line"><strong>Question:</strong><div class="text">${escapeHtml(asked)}</div></div>
           <div class="line answer"><strong>Answer:</strong><div class="text">${escapeHtml(String(answer))}</div></div>
+          ${commandHtml}
           ${err ? `<div class="line error"><strong>AI Error:</strong><div class="text">${escapeHtml(String(err))}</div></div>` : ""}
           <div class="expand-hint">Click card to expand</div>
         </div>

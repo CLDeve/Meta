@@ -80,6 +80,16 @@ class StreamViewModel(
     private val wearablesViewModel: WearablesViewModel,
 ) : AndroidViewModel(application) {
 
+  private data class CommandCard(
+      val intent: String,
+      val title: String,
+      val action: String,
+      val priority: String,
+      val confidence: Double,
+      val targetGate: String? = null,
+      val reason: String? = null,
+  )
+
   companion object {
     private const val TAG = "StreamViewModel"
     private const val DEFAULT_DESCRIBE_QUESTION = "What is in front of me?"
@@ -643,6 +653,7 @@ class StreamViewModel(
         if (endpoint.isEmpty()) {
           return@withContext COMMAND_CENTER_DISABLED
         }
+        val commandCard = buildCommandCard(question = question, answer = answer, aiError = aiError)
 
         val encodedFrame =
             frame?.let {
@@ -659,6 +670,8 @@ class StreamViewModel(
                 .put("question", question)
                 .put("answer", answer ?: JSONObject.NULL)
                 .put("aiError", aiError ?: JSONObject.NULL)
+                .put("intent", commandCard?.intent ?: JSONObject.NULL)
+                .put("commandCard", commandCard?.let { commandCardToJson(it) } ?: JSONObject.NULL)
                 .put("imageMimeType", if (encodedFrame != null) "image/jpeg" else JSONObject.NULL)
                 .put("frameJpegBase64", encodedFrame ?: JSONObject.NULL)
                 .put("source", "meta-wearables-cameraaccess")
@@ -684,6 +697,128 @@ class StreamViewModel(
         }
         COMMAND_CENTER_SUCCESS
       }
+
+  private fun buildCommandCard(question: String, answer: String?, aiError: String?): CommandCard? {
+    if (question.isBlank() && answer.isNullOrBlank() && aiError.isNullOrBlank()) {
+      return null
+    }
+    val combined = "$question ${answer.orEmpty()} ${aiError.orEmpty()}".lowercase(Locale.ROOT)
+    val gate = extractGateCode("$question ${answer.orEmpty()}")
+
+    if (!aiError.isNullOrBlank()) {
+      return CommandCard(
+          intent = "retry_ai",
+          title = "Retry visual query",
+          action = "AI failed. Re-ask the question or switch to a clearer camera angle.",
+          priority = "medium",
+          confidence = 0.50,
+          targetGate = gate,
+          reason = aiError,
+      )
+    }
+
+    if (containsAny(combined, "fire", "smoke", "flame", "burning")) {
+      return CommandCard(
+          intent = "alert_fire_response",
+          title = "Fire safety alert",
+          action = "Notify fire response and clear nearby passengers immediately.",
+          priority = "critical",
+          confidence = 0.92,
+          targetGate = gate,
+          reason = answer,
+      )
+    }
+
+    if (containsAny(combined, "collapsed", "fainted", "unconscious", "injured", "bleeding", "medical")) {
+      return CommandCard(
+          intent = "alert_medical_response",
+          title = "Medical assistance needed",
+          action = "Dispatch medical responder and keep lane clear for access.",
+          priority = "high",
+          confidence = 0.88,
+          targetGate = gate,
+          reason = answer,
+      )
+    }
+
+    if (
+        containsAny(
+            combined,
+            "weapon",
+            "fight",
+            "aggressive",
+            "suspicious",
+            "intruder",
+            "unattended bag",
+            "security",
+        )
+    ) {
+      return CommandCard(
+          intent = "alert_security",
+          title = "Security response advised",
+          action = "Escalate to security desk and monitor the area until handover.",
+          priority = "high",
+          confidence = 0.84,
+          targetGate = gate,
+          reason = answer,
+      )
+    }
+
+    if (containsAny(combined, "crowd", "crowded", "queue", "long line", "packed", "congestion", "busy")) {
+      val gateLabel = gate ?: "nearby gate"
+      return CommandCard(
+          intent = "open_queue_relief_lane",
+          title = "Queue relief at $gateLabel",
+          action = "Open support lane and reassign one officer for crowd flow control.",
+          priority = "medium",
+          confidence = 0.78,
+          targetGate = gate,
+          reason = answer,
+      )
+    }
+
+    if (containsAny(combined, "delay", "delayed", "cancelled", "canceled", "boarding", "flight status")) {
+      return CommandCard(
+          intent = "check_flight_status",
+          title = "Verify flight status",
+          action = "Cross-check departure feed and broadcast update to affected passengers.",
+          priority = "medium",
+          confidence = 0.74,
+          targetGate = gate,
+          reason = answer,
+      )
+    }
+
+    return CommandCard(
+        intent = "observe_only",
+        title = "No immediate action",
+        action = "Continue monitoring and ask follow-up if the scene changes.",
+        priority = "low",
+        confidence = 0.64,
+        targetGate = gate,
+        reason = answer,
+    )
+  }
+
+  private fun commandCardToJson(card: CommandCard): JSONObject {
+    return JSONObject()
+        .put("intent", card.intent)
+        .put("title", card.title)
+        .put("action", card.action)
+        .put("priority", card.priority)
+        .put("confidence", card.confidence)
+        .put("targetGate", card.targetGate ?: JSONObject.NULL)
+        .put("reason", card.reason ?: JSONObject.NULL)
+  }
+
+  private fun extractGateCode(text: String): String? {
+    val gateRegex = Regex("\\b([A-Z]\\d{1,2})\\b")
+    return gateRegex.find(text.uppercase(Locale.ROOT))?.groupValues?.getOrNull(1)
+  }
+
+  private fun containsAny(haystack: String, vararg needles: String): Boolean {
+    return needles.any { haystack.contains(it) }
+  }
 
   private fun speakText(text: String) {
     val app = getApplication<Application>()
