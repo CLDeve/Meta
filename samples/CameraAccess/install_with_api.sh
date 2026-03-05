@@ -57,5 +57,9 @@ OPENAI_API_KEY="${OPENAI_API_KEY}" \
 OPENAI_BASE_URL="${OPENAI_BASE_URL}" \
 OPENAI_MODEL="${OPENAI_MODEL}" \
 COMMAND_CENTER_URL="${COMMAND_CENTER_URL}" \
-./gradlew :app:installDebug --rerun-tasks "$@"
-
+./gradlew :app:installDebug --rerun-tasks \
+  "-POPENAI_API_KEY=${OPENAI_API_KEY}" \
+  "-POPENAI_BASE_URL=${OPENAI_BASE_URL}" \
+  "-POPENAI_MODEL=${OPENAI_MODEL}" \
+  "-PCOMMAND_CENTER_URL=${COMMAND_CENTER_URL}" \
+  "$@"

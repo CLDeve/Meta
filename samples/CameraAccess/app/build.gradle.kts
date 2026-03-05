@@ -24,14 +24,23 @@ android {
     targetSdk = 34
     versionCode = 1
     versionName = "1.0"
-    val openAiBaseUrl = System.getenv("OPENAI_BASE_URL") ?: "https://api.openai.com/v1"
-    val openAiModel = System.getenv("OPENAI_MODEL") ?: "gpt-4o-mini"
-    val openAiApiKey = System.getenv("OPENAI_API_KEY") ?: ""
-    val commandCenterUrl = System.getenv("COMMAND_CENTER_URL") ?: ""
-    buildConfigField("String", "OPENAI_BASE_URL", "\"$openAiBaseUrl\"")
-    buildConfigField("String", "OPENAI_MODEL", "\"$openAiModel\"")
-    buildConfigField("String", "OPENAI_API_KEY", "\"$openAiApiKey\"")
-    buildConfigField("String", "COMMAND_CENTER_URL", "\"$commandCenterUrl\"")
+    fun configValue(name: String, defaultValue: String = ""): String {
+      val propValue = project.findProperty(name) as String?
+      if (!propValue.isNullOrBlank()) return propValue
+      return System.getenv(name)?.takeIf { it.isNotBlank() } ?: defaultValue
+    }
+
+    fun asBuildConfigString(value: String): String =
+        "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+    val openAiBaseUrl = configValue("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    val openAiModel = configValue("OPENAI_MODEL", "gpt-4o-mini")
+    val openAiApiKey = configValue("OPENAI_API_KEY")
+    val commandCenterUrl = configValue("COMMAND_CENTER_URL")
+    buildConfigField("String", "OPENAI_BASE_URL", asBuildConfigString(openAiBaseUrl))
+    buildConfigField("String", "OPENAI_MODEL", asBuildConfigString(openAiModel))
+    buildConfigField("String", "OPENAI_API_KEY", asBuildConfigString(openAiApiKey))
+    buildConfigField("String", "COMMAND_CENTER_URL", asBuildConfigString(commandCenterUrl))
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables { useSupportLibrary = true }
