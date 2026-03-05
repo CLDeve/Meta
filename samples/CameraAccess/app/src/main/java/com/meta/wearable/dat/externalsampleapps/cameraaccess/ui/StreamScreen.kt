@@ -22,19 +22,30 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,11 +57,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meta.wearable.dat.camera.types.StreamSessionState
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.R
+import com.meta.wearable.dat.externalsampleapps.cameraaccess.stream.ChatMessage
+import com.meta.wearable.dat.externalsampleapps.cameraaccess.stream.ChatRole
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.stream.StreamViewModel
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.stream.StreamUiState
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.wearables.WearablesViewModel
@@ -109,6 +125,16 @@ fun StreamScreen(
     DescribeOverlay(
         streamUiState = streamUiState,
         modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+    )
+
+    ChatOverlay(
+        streamUiState = streamUiState,
+        onSendQuestion = { streamViewModel.describeCurrentFrame(it) },
+        modifier =
+            Modifier.align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 124.dp)
+                .imePadding(),
     )
 
     Box(modifier = Modifier.fillMaxSize().padding(all = 24.dp)) {
@@ -195,6 +221,104 @@ fun StreamScreen(
             streamViewModel.sharePhoto(bitmap)
             streamViewModel.hideShareDialog()
           },
+      )
+    }
+  }
+}
+
+@Composable
+private fun ChatOverlay(
+    streamUiState: StreamUiState,
+    onSendQuestion: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  var draft by rememberSaveable { mutableStateOf("") }
+  val canSend = draft.isNotBlank() && !streamUiState.isDescribeLoading
+
+  fun submitDraft() {
+    val normalized = draft.trim()
+    if (normalized.isEmpty() || streamUiState.isDescribeLoading) {
+      return
+    }
+    onSendQuestion(normalized)
+    draft = ""
+  }
+
+  Surface(
+      modifier = modifier,
+      color = Color.White.copy(alpha = 0.08f),
+      shape = RoundedCornerShape(16.dp),
+      border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+  ) {
+    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Text(
+          text = stringResource(id = R.string.chat_title),
+          color = Color.White,
+          style = AppTypography.Body,
+      )
+
+      if (streamUiState.chatMessages.isNotEmpty()) {
+        val recentMessages = streamUiState.chatMessages.takeLast(6)
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          items(recentMessages) { message -> ChatBubble(message = message) }
+        }
+      }
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            modifier = Modifier.weight(1f),
+            placeholder = {
+              Text(
+                  text = stringResource(id = R.string.chat_input_placeholder),
+                  style = AppTypography.Body.copy(color = Color.LightGray),
+              )
+            },
+            singleLine = true,
+            enabled = !streamUiState.isDescribeLoading,
+            textStyle = AppTypography.Body.copy(color = Color.White),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { submitDraft() }),
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Button(onClick = { submitDraft() }, enabled = canSend) {
+          Text(text = stringResource(id = R.string.chat_send_button), style = AppTypography.Button)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun ChatBubble(message: ChatMessage) {
+  val isUser = message.role == ChatRole.USER
+  val bubbleColor =
+      if (isUser) {
+        Color(0xFF2A5EA8).copy(alpha = 0.72f)
+      } else {
+        Color(0xFF15233D).copy(alpha = 0.82f)
+      }
+
+  Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+  ) {
+    Surface(
+        color = bubbleColor,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+      Text(
+          text = message.text,
+          modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+          color = Color.White,
+          style = AppTypography.Body.copy(color = Color.White),
       )
     }
   }

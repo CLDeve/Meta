@@ -15,6 +15,16 @@ package com.meta.wearable.dat.externalsampleapps.cameraaccess.stream
 import android.graphics.Bitmap
 import com.meta.wearable.dat.camera.types.StreamSessionState
 
+enum class ChatRole {
+  USER,
+  ASSISTANT,
+}
+
+data class ChatMessage(
+    val role: ChatRole,
+    val text: String,
+)
+
 data class StreamUiState(
     val streamSessionState: StreamSessionState = StreamSessionState.STOPPED,
     val videoFrame: Bitmap? = null,
@@ -30,4 +40,5 @@ data class StreamUiState(
     val isListening: Boolean = false,
     val isHandsFreeModeEnabled: Boolean = false,
     val voiceHeardText: String? = null,
+    val chatMessages: List<ChatMessage> = emptyList(),
 )

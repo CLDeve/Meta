@@ -105,6 +105,7 @@ class StreamViewModel(
     private const val COMMAND_CENTER_DISABLED =
         "Set COMMAND_CENTER_URL to forward responses to command centre"
     private const val QA_EVENT_TYPE = "qa"
+    private const val MAX_CHAT_MESSAGES = 24
     private val INITIAL_STATE = StreamUiState()
   }
 
@@ -125,6 +126,8 @@ class StreamViewModel(
   private var audioManager: AudioManager? = null
   private var previousAudioMode: Int? = null
   private var hasForcedBluetoothVoiceRoute = false
+  private var preferBluetoothVoiceRoute = true
+  private var bluetoothNoSpeechFailureCount = 0
   private var suppressNextVoiceError = false
   private var voiceRetryCount: Int = 0
   private var textToSpeech: TextToSpeech? = null
@@ -205,16 +208,19 @@ class StreamViewModel(
   fun describeCurrentFrame(question: String = DEFAULT_DESCRIBE_QUESTION) {
     val frame = _uiState.value.videoFrame
     val normalizedQuestion = question.trim().ifBlank { DEFAULT_DESCRIBE_QUESTION }
+    appendChatMessage(ChatRole.USER, normalizedQuestion)
     if (frame == null) {
+      val noFrameError = "No frame available yet"
       _uiState.update {
         it.copy(
             isDescribeLoading = false,
             describeResult = null,
-            describeError = "No frame available yet",
+            describeError = noFrameError,
             commandCenterStatus = null,
             commandCenterError = null,
         )
       }
+      appendChatMessage(ChatRole.ASSISTANT, "Error: $noFrameError")
       return
     }
 
@@ -235,6 +241,10 @@ class StreamViewModel(
 
       val describeResult = result.getOrNull()
       val describeError = result.exceptionOrNull()?.message
+      when {
+        !describeResult.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, describeResult)
+        !describeError.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, "Error: $describeError")
+      }
       val handsFreeEnabled = _uiState.value.isHandsFreeModeEnabled
       if (!describeResult.isNullOrBlank()) {
         speakText(describeResult)
@@ -263,6 +273,17 @@ class StreamViewModel(
       if (handsFreeEnabled && !isSpeakingAnswer) {
         restartHandsFreeListening()
       }
+    }
+  }
+
+  private fun appendChatMessage(role: ChatRole, text: String) {
+    val normalized = text.trim()
+    if (normalized.isEmpty()) {
+      return
+    }
+    _uiState.update {
+      val updated = (it.chatMessages + ChatMessage(role = role, text = normalized)).takeLast(MAX_CHAT_MESSAGES)
+      it.copy(chatMessages = updated)
     }
   }
 
@@ -329,7 +350,7 @@ class StreamViewModel(
 
   fun startVoiceDescribe(context: Context) {
     latestVoiceContext = context.applicationContext
-    prepareVoiceAudioRoute(context)
+    prepareVoiceAudioRoute(context, preferBluetooth = preferBluetoothVoiceRoute)
     if (!SpeechRecognizer.isRecognitionAvailable(context)) {
       _uiState.update {
         it.copy(
@@ -352,8 +373,10 @@ class StreamViewModel(
       putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault())
       putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
       putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
-      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+      putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1400L)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2400L)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
     }
     val listener =
         object : RecognitionListener {
@@ -379,9 +402,17 @@ class StreamViewModel(
               return
             }
 
+            val isNoSpeechError =
+                error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+            if (isNoSpeechError && hasForcedBluetoothVoiceRoute) {
+              bluetoothNoSpeechFailureCount += 1
+            } else if (!isNoSpeechError) {
+              bluetoothNoSpeechFailureCount = 0
+            }
+
             val canRetry =
-                (error == SpeechRecognizer.ERROR_NO_MATCH ||
-                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) &&
+                isNoSpeechError &&
                     voiceRetryCount < MAX_VOICE_RETRIES
             if (canRetry) {
               voiceRetryCount += 1
@@ -392,11 +423,25 @@ class StreamViewModel(
               speechRecognizer?.startListening(intent)
               return
             }
+
+            if (isNoSpeechError && hasForcedBluetoothVoiceRoute && bluetoothNoSpeechFailureCount >= 2) {
+              preferBluetoothVoiceRoute = false
+              _uiState.update {
+                it.copy(
+                    isListening = false,
+                    describeError = "Could not hear clearly from glasses mic. Switched to phone mic.",
+                )
+              }
+              if (_uiState.value.isHandsFreeModeEnabled) {
+                restartHandsFreeListening(150L)
+              }
+              return
+            }
+
             _uiState.update { it.copy(isListening = false, describeError = speechErrorMessage(error)) }
             if (
                 _uiState.value.isHandsFreeModeEnabled &&
-                    (error == SpeechRecognizer.ERROR_NO_MATCH ||
-                        error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+                    isNoSpeechError
             ) {
               restartHandsFreeListening()
             }
@@ -409,6 +454,7 @@ class StreamViewModel(
                     ?: ""
             val normalizedText = text.trim()
             voiceRetryCount = 0
+            bluetoothNoSpeechFailureCount = 0
             _uiState.update { it.copy(isListening = false, voiceHeardText = normalizedText) }
             if (normalizedText.isNotEmpty()) {
               if (isStopHandsFreeCommand(normalizedText)) {
@@ -448,6 +494,8 @@ class StreamViewModel(
 
   fun stopVoiceDescribe(disableHandsFreeMode: Boolean = true) {
     voiceRetryCount = 0
+    bluetoothNoSpeechFailureCount = 0
+    preferBluetoothVoiceRoute = true
     suppressNextVoiceError = true
     speechRecognizer?.stopListening()
     speechRecognizer?.cancel()
@@ -489,12 +537,21 @@ class StreamViewModel(
         normalized == "exit voice mode"
   }
 
-  private fun prepareVoiceAudioRoute(context: Context) {
+  private fun prepareVoiceAudioRoute(context: Context, preferBluetooth: Boolean) {
     val manager = context.getSystemService(AudioManager::class.java) ?: return
     audioManager = manager
     if (previousAudioMode == null) {
       previousAudioMode = manager.mode
     }
+    if (!preferBluetooth) {
+      manager.mode = AudioManager.MODE_NORMAL
+      runCatching { manager.clearCommunicationDevice() }
+          .onFailure { Log.w(TAG, "Failed to clear communication device for phone mic fallback", it) }
+      hasForcedBluetoothVoiceRoute = false
+      Log.i(TAG, "Voice input using phone microphone fallback.")
+      return
+    }
+
     manager.mode = AudioManager.MODE_IN_COMMUNICATION
     val bluetoothDevice =
         manager.availableCommunicationDevices.firstOrNull { device ->
@@ -531,8 +588,18 @@ class StreamViewModel(
 
   private fun speechErrorMessage(error: Int): String {
     return when (error) {
-      SpeechRecognizer.ERROR_NO_MATCH -> "Couldn't understand your speech (7)."
-      SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected in time (6)."
+      SpeechRecognizer.ERROR_NO_MATCH ->
+          if (hasForcedBluetoothVoiceRoute) {
+            "Could not understand speech from glasses mic (7)."
+          } else {
+            "Could not understand speech from phone mic (7)."
+          }
+      SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+          if (hasForcedBluetoothVoiceRoute) {
+            "No speech detected from glasses mic in time (6)."
+          } else {
+            "No speech detected from phone mic in time (6)."
+          }
       SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
           "Speech service network issue. Check internet."
       SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> "Too many voice requests. Wait a moment and try again."

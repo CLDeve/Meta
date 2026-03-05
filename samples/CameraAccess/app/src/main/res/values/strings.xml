@@ -53,6 +53,9 @@
     <string name="hands_free_mode_active" description="Hands-free mode active hint">Hands-free is on. Say \"stop listening\" to exit.</string>
     <string name="voice_heard_label" description="Prefix for heard voice question">You asked:</string>
     <string name="command_center_error_prefix" description="Prefix for command center errors">Command centre:</string>
+    <string name="chat_title" description="Title for in-app chat panel">Chat</string>
+    <string name="chat_input_placeholder" description="Placeholder in chat text input">Type your question…</string>
+    <string name="chat_send_button" description="Send chat question button">Send</string>
 
     <!-- Mock Device Kit Screen -->
     <string name="mock_device_kit_title" description="Mock Device Kit Title">Mock Device Kit</string>
