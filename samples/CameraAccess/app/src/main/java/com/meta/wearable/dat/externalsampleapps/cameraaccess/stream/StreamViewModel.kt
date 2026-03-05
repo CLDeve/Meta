@@ -17,9 +17,11 @@
 
 package com.meta.wearable.dat.externalsampleapps.cameraaccess.stream
 
+import android.Manifest
 import android.app.Application
 import android.content.Intent
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.graphics.Bitmap
@@ -28,6 +30,7 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.net.Uri
 import android.util.Log
 import android.util.Base64
 import android.speech.RecognitionListener
@@ -36,6 +39,7 @@ import android.speech.SpeechRecognizer
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
@@ -105,6 +109,7 @@ class StreamViewModel(
         "Set COMMAND_CENTER_URL to forward responses to command centre"
     private const val QA_EVENT_TYPE = "qa"
     private const val MAX_CHAT_MESSAGES = 24
+    private const val CIOC_PHONE_NUMBER = "91002365"
     private val INITIAL_STATE = StreamUiState()
   }
 
@@ -205,7 +210,6 @@ class StreamViewModel(
   }
 
   fun describeCurrentFrame(question: String? = null) {
-    val frame = _uiState.value.videoFrame
     val normalizedQuestion = question?.trim().orEmpty()
     if (normalizedQuestion.isEmpty()) {
       val missingQuestionError = "Please type or speak your question first."
@@ -221,7 +225,11 @@ class StreamViewModel(
       appendChatMessage(ChatRole.ASSISTANT, "Error: $missingQuestionError")
       return
     }
+    if (handleLocalPhoneCommand(normalizedQuestion)) {
+      return
+    }
     appendChatMessage(ChatRole.USER, normalizedQuestion)
+    val frame = _uiState.value.videoFrame
     if (frame == null) {
       val noFrameError = "No frame available yet"
       _uiState.update {
@@ -287,6 +295,63 @@ class StreamViewModel(
         restartHandsFreeListening()
       }
     }
+  }
+
+  private fun handleLocalPhoneCommand(question: String): Boolean {
+    val normalized = question.lowercase(Locale.ROOT)
+    val hasCiocTarget = normalized.contains("cioc") || normalized.contains("c i o c")
+    val wantsCall = normalized.contains("call") || normalized.contains("connect")
+    if (!hasCiocTarget || !wantsCall) {
+      return false
+    }
+
+    appendChatMessage(ChatRole.USER, question)
+    val appContext = getApplication<Application>().applicationContext
+    val hasCallPermission =
+        ContextCompat.checkSelfPermission(appContext, Manifest.permission.CALL_PHONE) ==
+            PackageManager.PERMISSION_GRANTED
+    val action = if (hasCallPermission) Intent.ACTION_CALL else Intent.ACTION_DIAL
+    val callIntent =
+        Intent(action, Uri.parse("tel:$CIOC_PHONE_NUMBER")).apply {
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+
+    return runCatching { appContext.startActivity(callIntent) }
+        .map {
+          val resultText =
+              if (hasCallPermission) {
+                "Connecting CIOC now ($CIOC_PHONE_NUMBER)."
+              } else {
+                "Opening CIOC dialer now ($CIOC_PHONE_NUMBER)."
+              }
+          _uiState.update {
+            it.copy(
+                isDescribeLoading = false,
+                describeResult = resultText,
+                describeError = null,
+                commandCenterStatus = null,
+                commandCenterError = null,
+            )
+          }
+          appendChatMessage(ChatRole.ASSISTANT, resultText)
+          speakText("Connecting you to C I O C now.")
+          true
+        }
+        .getOrElse {
+          val err = "Could not start CIOC call."
+          _uiState.update {
+            state ->
+              state.copy(
+                  isDescribeLoading = false,
+                  describeResult = null,
+                  describeError = err,
+                  commandCenterStatus = null,
+                  commandCenterError = null,
+              )
+          }
+          appendChatMessage(ChatRole.ASSISTANT, "Error: $err")
+          false
+        }
   }
 
   private fun appendChatMessage(role: ChatRole, text: String) {

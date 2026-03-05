@@ -108,6 +108,20 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
     _uiState.update { it.copy(isStreaming = false) }
   }
 
+  fun requestVoiceStart() {
+    _uiState.update { it.copy(voiceStartNonce = System.currentTimeMillis()) }
+  }
+
+  fun acknowledgeVoiceStart(nonce: Long) {
+    _uiState.update { state ->
+      if (state.voiceStartNonce == nonce) {
+        state.copy(voiceStartNonce = 0L)
+      } else {
+        state
+      }
+    }
+  }
+
   fun showDebugMenu() {
     _uiState.update { it.copy(isDebugMenuVisible = true) }
   }

@@ -22,6 +22,7 @@ data class WearablesUiState(
     val devices: ImmutableList<DeviceIdentifier> = persistentListOf(),
     val recentError: String? = null,
     val isStreaming: Boolean = false,
+    val voiceStartNonce: Long = 0L,
     val hasMockDevices: Boolean = false,
     val isDebugMenuVisible: Boolean = false,
     val isGettingStartedSheetVisible: Boolean = false,

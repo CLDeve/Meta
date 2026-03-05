@@ -84,6 +84,8 @@ fun CameraAccessScaffold(
         uiState.isStreaming ->
             StreamScreen(
                 wearablesViewModel = viewModel,
+                autoStartVoiceNonce = uiState.voiceStartNonce,
+                onAutoStartVoiceConsumed = { nonce -> viewModel.acknowledgeVoiceStart(nonce) },
             )
         uiState.isRegistered ->
             NonStreamScreen(

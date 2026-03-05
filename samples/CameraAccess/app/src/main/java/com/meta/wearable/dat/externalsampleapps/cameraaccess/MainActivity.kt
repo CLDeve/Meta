@@ -21,6 +21,7 @@ import android.Manifest.permission.BLUETOOTH
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.Manifest.permission.INTERNET
 import android.Manifest.permission.RECORD_AUDIO
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -32,6 +33,7 @@ import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.ui.CameraAccessScaffold
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.wearables.WearablesViewModel
+import java.util.Locale
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -48,6 +50,8 @@ class MainActivity : ComponentActivity() {
 
   private var permissionContinuation: CancellableContinuation<PermissionStatus>? = null
   private val permissionMutex = Mutex()
+  private var sdkInitialized = false
+  private var pendingPttLaunch = false
   // Requesting wearable device permissions via the Meta AI app
   private val permissionsResultLauncher =
       registerForActivityResult(Wearables.RequestPermissionContract()) { result ->
@@ -70,15 +74,18 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    pendingPttLaunch = isPttIntent(intent)
 
     // First, ensure the app has necessary Android permissions
     checkPermissions {
       // Initialize the DAT SDK once the permissions are granted
       // This is REQUIRED before using any Wearables APIs
       Wearables.initialize(this)
+      sdkInitialized = true
 
       // Start observing Wearables state after SDK is initialized
       viewModel.startMonitoring()
+      handlePendingPttLaunch()
     }
 
     setContent {
@@ -87,6 +94,35 @@ class MainActivity : ComponentActivity() {
           onRequestWearablesPermission = ::requestWearablesPermission,
       )
     }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    if (isPttIntent(intent)) {
+      pendingPttLaunch = true
+      handlePendingPttLaunch()
+    }
+  }
+
+  private fun handlePendingPttLaunch() {
+    if (!sdkInitialized || !pendingPttLaunch) {
+      return
+    }
+    pendingPttLaunch = false
+    viewModel.requestVoiceStart()
+    viewModel.navigateToStreaming(::requestWearablesPermission)
+  }
+
+  private fun isPttIntent(intent: Intent?): Boolean {
+    val data = intent?.data ?: return false
+    if (data.scheme?.lowercase(Locale.ROOT) != "cameraaccess") {
+      return false
+    }
+    val host = data.host?.lowercase(Locale.ROOT).orEmpty()
+    val path = data.path?.lowercase(Locale.ROOT).orEmpty()
+    val action = data.getQueryParameter("action")?.lowercase(Locale.ROOT).orEmpty()
+    return host == "ptt" || path.contains("ptt") || action == "ptt"
   }
 
   fun checkPermissions(onPermissionsGranted: () -> Unit) {

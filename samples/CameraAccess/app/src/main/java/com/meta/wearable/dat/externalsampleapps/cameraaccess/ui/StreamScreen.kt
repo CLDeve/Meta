@@ -78,6 +78,8 @@ import com.meta.wearable.dat.externalsampleapps.cameraaccess.ui.typography.AppTy
 @Composable
 fun StreamScreen(
     wearablesViewModel: WearablesViewModel,
+    autoStartVoiceNonce: Long = 0L,
+    onAutoStartVoiceConsumed: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     streamViewModel: StreamViewModel =
         viewModel(
@@ -93,6 +95,12 @@ fun StreamScreen(
   var isChatExpanded by rememberSaveable { mutableStateOf(false) }
 
   LaunchedEffect(Unit) { streamViewModel.startStream() }
+  LaunchedEffect(autoStartVoiceNonce) {
+    if (autoStartVoiceNonce > 0L) {
+      streamViewModel.startVoiceDescribe(context)
+      onAutoStartVoiceConsumed(autoStartVoiceNonce)
+    }
+  }
 
   val backgroundBrush =
       Brush.linearGradient(listOf(Color(0xFF07101F), Color(0xFF0A1830), Color(0xFF0B1D3A)))

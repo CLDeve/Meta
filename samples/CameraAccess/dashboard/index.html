@@ -88,6 +88,12 @@
       display: inline-block;
     }
 
+    button.pill {
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+    }
+
     .dot {
       width: 10px;
       height: 10px;
@@ -218,6 +224,7 @@
         <p class="subtitle">Live events from glasses-assisted questioning</p>
       </div>
       <div class="panel status-row">
+        <button class="pill" id="pttBtn" type="button">PTT App</button>
         <a class="pill link" href="/worldview">Worldview</a>
         <a class="pill link" href="/flights">Flights Page</a>
         <div class="pill"><span id="liveDot" class="dot"></span><strong id="connState">connecting</strong></div>
@@ -237,6 +244,7 @@
     const liveDot = document.getElementById("liveDot");
     const eventCount = document.getElementById("eventCount");
     const lastIdEl = document.getElementById("lastId");
+    const pttBtn = document.getElementById("pttBtn");
 
     const MAX_VISIBLE_CARDS = 100;
     let latestId = 0;
@@ -245,6 +253,12 @@
     function setConnection(ok, text) {
       connState.textContent = text;
       liveDot.classList.toggle("ok", ok);
+    }
+
+    if (pttBtn) {
+      pttBtn.addEventListener("click", () => {
+        window.location.href = "cameraaccess://ptt";
+      });
     }
 
     function cardFor(event) {
