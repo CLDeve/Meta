@@ -16,6 +16,11 @@ Optional throttle settings:
 - `EVENTS_MAXLEN` (default `500`, keeps the newest N events)
 - `EVENTS_DB_PATH` (default `./events.db` beside `server.py`)
 - `DASHBOARD_ADMIN_TOKEN` (optional; required for `DELETE /api/events` if set)
+- `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` (optional; enables OpenSky OAuth2 mode)
+- `OPENSKY_CACHE_TTL_SECONDS` (default `30`)
+- `OPENSKY_TIMEOUT_SECONDS` (default `15`)
+- `OPENSKY_POLL_ANON_MS` (default `240000`)
+- `OPENSKY_POLL_AUTH_MS` (default `30000`)
 
 Open in browser:
 
@@ -45,6 +50,9 @@ Endpoints:
 - `GET /api/flights?date=YYYY-MM-DD&type=scheduled&flightno=` proxies:
   `https://api.cas.certispsb.net/api-ext/v1/flights/departure/list`
   (requires env var `CAS_API_KEY` when starting server; returns cached data when upstream is throttled)
+- `GET /api/opensky?lamin=...&lomin=...&lamax=...&lomax=...&limit=180` proxies:
+  `https://opensky-network.org/api/states/all`
+  (uses OAuth2 when `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` are set; otherwise anonymous mode)
 
 ## Render persistence note
 

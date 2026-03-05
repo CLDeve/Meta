@@ -20,11 +20,21 @@ from urllib.request import Request, urlopen
 
 LOCK = threading.Lock()
 FLIGHTS_API_URL = "https://api.cas.certispsb.net/api-ext/v1/flights/departure/list"
+OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
+OPENSKY_TOKEN_URL = (
+    "https://auth.opensky-network.org/auth/realms/opensky-network/"
+    "protocol/openid-connect/token"
+)
 CAS_API_KEY = os.getenv("CAS_API_KEY", "").strip()
+OPENSKY_CLIENT_ID = os.getenv("OPENSKY_CLIENT_ID", "").strip()
+OPENSKY_CLIENT_SECRET = os.getenv("OPENSKY_CLIENT_SECRET", "").strip()
 ADMIN_TOKEN = os.getenv("DASHBOARD_ADMIN_TOKEN", "").strip()
 FLIGHTS_CACHE: dict[str, dict[str, Any]] = {}
+OPENSKY_CACHE: dict[str, dict[str, Any]] = {}
 CAS_THROTTLED_UNTIL = 0.0
 DB_CONN: sqlite3.Connection | None = None
+OPENSKY_TOKEN: str | None = None
+OPENSKY_TOKEN_EXPIRES_AT = 0.0
 
 
 def _read_int_env(name: str, default: int) -> int:
@@ -41,6 +51,10 @@ def _read_int_env(name: str, default: int) -> int:
 CAS_CACHE_TTL_SECONDS = _read_int_env("CAS_CACHE_TTL_SECONDS", 45)
 CAS_THROTTLE_BACKOFF_SECONDS = _read_int_env("CAS_THROTTLE_BACKOFF_SECONDS", 45)
 EVENTS_MAXLEN = _read_int_env("EVENTS_MAXLEN", 500)
+OPENSKY_CACHE_TTL_SECONDS = _read_int_env("OPENSKY_CACHE_TTL_SECONDS", 30)
+OPENSKY_TIMEOUT_SECONDS = _read_int_env("OPENSKY_TIMEOUT_SECONDS", 15)
+OPENSKY_POLL_ANON_MS = _read_int_env("OPENSKY_POLL_ANON_MS", 240_000)
+OPENSKY_POLL_AUTH_MS = _read_int_env("OPENSKY_POLL_AUTH_MS", 30_000)
 
 
 def _events_db_path() -> Path:
@@ -179,12 +193,12 @@ def _cache_get(cache: dict[str, dict[str, Any]], key: str, allow_stale: bool = F
     return payload, stale
 
 
-def _cache_set(cache: dict[str, dict[str, Any]], key: str, payload: dict[str, Any]) -> None:
-    if CAS_CACHE_TTL_SECONDS <= 0:
+def _cache_set(cache: dict[str, dict[str, Any]], key: str, payload: dict[str, Any], ttl_seconds: int) -> None:
+    if ttl_seconds <= 0:
         return
     with LOCK:
         cache[key] = {
-            "expiresAtEpoch": time.time() + CAS_CACHE_TTL_SECONDS,
+            "expiresAtEpoch": time.time() + ttl_seconds,
             "payload": payload,
         }
 
@@ -252,7 +266,7 @@ def fetch_departures(date: str, flight_type: str, flight_no: str) -> tuple[int, 
                 "query": {"date": date, "type": flight_type, "flightno": flight_no},
                 "data": payload,
             }
-            _cache_set(FLIGHTS_CACHE, cache_key, result)
+            _cache_set(FLIGHTS_CACHE, cache_key, result, ttl_seconds=CAS_CACHE_TTL_SECONDS)
             _clear_cas_throttle()
             return HTTPStatus.OK, result
     except HTTPError as err:
@@ -270,6 +284,224 @@ def fetch_departures(date: str, flight_type: str, flight_no: str) -> tuple[int, 
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"Upstream connection failed: {err.reason}"}
     except json.JSONDecodeError:
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "Upstream returned non-JSON payload"}
+
+
+def _to_float(value: str | None, fallback: float) -> float:
+    if value is None:
+        return fallback
+    try:
+        return float(value)
+    except ValueError:
+        return fallback
+
+
+def _opensky_poll_ms(auth_mode: str) -> int:
+    if auth_mode == "oauth2":
+        return max(10_000, OPENSKY_POLL_AUTH_MS)
+    return max(30_000, OPENSKY_POLL_ANON_MS)
+
+
+def _fetch_opensky_token() -> str:
+    global OPENSKY_TOKEN, OPENSKY_TOKEN_EXPIRES_AT
+    if not OPENSKY_CLIENT_ID or not OPENSKY_CLIENT_SECRET:
+        raise RuntimeError("OpenSky credentials are not configured")
+
+    now = time.time()
+    with LOCK:
+        if OPENSKY_TOKEN and now < OPENSKY_TOKEN_EXPIRES_AT - 20:
+            return OPENSKY_TOKEN
+
+    payload = urlencode(
+        {
+            "grant_type": "client_credentials",
+            "client_id": OPENSKY_CLIENT_ID,
+            "client_secret": OPENSKY_CLIENT_SECRET,
+        }
+    ).encode("utf-8")
+
+    req = Request(
+        url=OPENSKY_TOKEN_URL,
+        method="POST",
+        data=payload,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "CameraAccessDashboard/1.0",
+        },
+    )
+
+    with urlopen(req, timeout=OPENSKY_TIMEOUT_SECONDS) as response:
+        body = response.read().decode("utf-8")
+    data = json.loads(body)
+    token = str(data.get("access_token", "")).strip()
+    expires_in = int(data.get("expires_in", 0) or 0)
+    if not token or expires_in <= 0:
+        raise RuntimeError("OpenSky token response missing access_token/expires_in")
+
+    with LOCK:
+        OPENSKY_TOKEN = token
+        OPENSKY_TOKEN_EXPIRES_AT = time.time() + expires_in
+    return token
+
+
+def _parse_opensky_state(row: Any) -> dict[str, Any] | None:
+    if not isinstance(row, list):
+        return None
+
+    def at(index: int) -> Any:
+        return row[index] if index < len(row) else None
+
+    callsign_raw = at(1)
+    callsign = callsign_raw.strip() if isinstance(callsign_raw, str) else None
+    if callsign == "":
+        callsign = None
+
+    return {
+        "icao24": at(0),
+        "callsign": callsign,
+        "originCountry": at(2),
+        "longitude": at(5),
+        "latitude": at(6),
+        "baroAltitude": at(7),
+        "onGround": at(8),
+        "velocity": at(9),
+        "trueTrack": at(10),
+        "verticalRate": at(11),
+        "geoAltitude": at(13),
+        "squawk": at(14),
+        "positionSource": at(16),
+        "category": at(17),
+        "lastContact": at(4),
+    }
+
+
+def fetch_opensky_states(
+    lamin: float,
+    lomin: float,
+    lamax: float,
+    lomax: float,
+    limit: int,
+) -> tuple[int, dict[str, Any]]:
+    min_lat, max_lat = sorted((lamin, lamax))
+    min_lon, max_lon = sorted((lomin, lomax))
+    max_items = min(max(limit, 1), 250)
+    cache_key = f"{min_lat:.4f}|{min_lon:.4f}|{max_lat:.4f}|{max_lon:.4f}|{max_items}"
+
+    cached_payload, _ = _cache_get(OPENSKY_CACHE, cache_key, allow_stale=False)
+    if cached_payload is not None:
+        payload = dict(cached_payload)
+        payload["cache"] = {"hit": True, "stale": False}
+        return HTTPStatus.OK, payload
+
+    params = {
+        "lamin": f"{min_lat:.4f}",
+        "lomin": f"{min_lon:.4f}",
+        "lamax": f"{max_lat:.4f}",
+        "lomax": f"{max_lon:.4f}",
+        "extended": "1",
+    }
+    url = f"{OPENSKY_STATES_URL}?{urlencode(params)}"
+    base_headers = {
+        "Accept": "application/json",
+        "User-Agent": "CameraAccessDashboard/1.0",
+    }
+
+    auth_mode = "anonymous"
+    warning: str | None = None
+    request_headers = dict(base_headers)
+    if OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECRET:
+        try:
+            token = _fetch_opensky_token()
+            request_headers["Authorization"] = f"Bearer {token}"
+            auth_mode = "oauth2"
+        except (RuntimeError, HTTPError, URLError, json.JSONDecodeError) as err:
+            warning = f"OpenSky OAuth unavailable. Falling back to anonymous mode: {err}"
+
+    try:
+        req = Request(url=url, method="GET", headers=request_headers)
+        with urlopen(req, timeout=OPENSKY_TIMEOUT_SECONDS) as response:
+            body = response.read().decode("utf-8")
+            response_headers = {k.lower(): v for k, v in response.headers.items()}
+    except HTTPError as err:
+        body = err.read().decode("utf-8", errors="replace")
+        if auth_mode == "oauth2" and err.code in {HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN}:
+            try:
+                req = Request(url=url, method="GET", headers=base_headers)
+                with urlopen(req, timeout=OPENSKY_TIMEOUT_SECONDS) as response:
+                    body = response.read().decode("utf-8")
+                    response_headers = {k.lower(): v for k, v in response.headers.items()}
+                auth_mode = "anonymous"
+                warning = "OpenSky OAuth rejected. Fell back to anonymous mode."
+            except HTTPError as fallback_err:
+                fallback_body = fallback_err.read().decode("utf-8", errors="replace")
+                return fallback_err.code, {
+                    "ok": False,
+                    "error": "OpenSky request failed",
+                    "status": fallback_err.code,
+                    "body": fallback_body,
+                }
+            except URLError as fallback_err:
+                return HTTPStatus.BAD_GATEWAY, {
+                    "ok": False,
+                    "error": f"OpenSky connection failed: {fallback_err.reason}",
+                }
+        else:
+            return err.code, {
+                "ok": False,
+                "error": "OpenSky request failed",
+                "status": err.code,
+                "body": body,
+            }
+    except URLError as err:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"OpenSky connection failed: {err.reason}"}
+
+    try:
+        root = json.loads(body)
+    except json.JSONDecodeError:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "OpenSky returned non-JSON payload"}
+
+    raw_states = root.get("states")
+    if raw_states is None:
+        raw_states = []
+    if not isinstance(raw_states, list):
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "OpenSky payload missing states list"}
+
+    parsed_states: list[dict[str, Any]] = []
+    for row in raw_states:
+        item = _parse_opensky_state(row)
+        if item is None:
+            continue
+        lat = item.get("latitude")
+        lon = item.get("longitude")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+            parsed_states.append(item)
+        if len(parsed_states) >= max_items:
+            break
+
+    payload = {
+        "ok": True,
+        "source": "opensky-network",
+        "authMode": auth_mode,
+        "recommendedPollMs": _opensky_poll_ms(auth_mode),
+        "fetchedAtEpochMs": int(time.time() * 1000),
+        "time": root.get("time"),
+        "bbox": {
+            "lamin": min_lat,
+            "lomin": min_lon,
+            "lamax": max_lat,
+            "lomax": max_lon,
+        },
+        "count": len(parsed_states),
+        "rawCount": len(raw_states),
+        "states": parsed_states,
+        "rateLimitRemaining": response_headers.get("x-rate-limit-remaining"),
+        "rateLimitRetryAfterSeconds": response_headers.get("x-rate-limit-retry-after-seconds"),
+    }
+    if warning:
+        payload["warning"] = warning
+
+    _cache_set(OPENSKY_CACHE, cache_key, payload, ttl_seconds=OPENSKY_CACHE_TTL_SECONDS)
+    return HTTPStatus.OK, payload
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -341,6 +573,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "events": count_events(),
                     "casThrottled": _is_cas_throttled(),
                     "flightsCacheEntries": len(FLIGHTS_CACHE),
+                    "openSkyCacheEntries": len(OPENSKY_CACHE),
+                    "openSkyOauthConfigured": bool(OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECRET),
                 }
             )
             return
@@ -382,6 +616,31 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Missing 'date' query parameter"}, status=HTTPStatus.BAD_REQUEST)
                 return
             status, payload = fetch_departures(date=date, flight_type=flight_type, flight_no=flight_no)
+            self._send_json(payload, status=status)
+            return
+
+        if parsed.path == "/api/opensky":
+            qs = parse_qs(parsed.query)
+            lamin = _to_float(qs.get("lamin", ["1.14"])[0], 1.14)
+            lomin = _to_float(qs.get("lomin", ["103.47"])[0], 103.47)
+            lamax = _to_float(qs.get("lamax", ["1.50"])[0], 1.50)
+            lomax = _to_float(qs.get("lomax", ["104.15"])[0], 104.15)
+
+            limit_raw = (qs.get("limit", ["120"])[0] or "").strip()
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                self._send_json({"ok": False, "error": "Invalid 'limit' query parameter"}, status=HTTPStatus.BAD_REQUEST)
+                return
+
+            limit = min(max(limit, 1), 250)
+            status, payload = fetch_opensky_states(
+                lamin=lamin,
+                lomin=lomin,
+                lamax=lamax,
+                lomax=lomax,
+                limit=limit,
+            )
             self._send_json(payload, status=status)
             return
 

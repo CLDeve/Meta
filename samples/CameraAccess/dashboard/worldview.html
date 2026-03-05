@@ -322,6 +322,29 @@
       opacity: 0.8;
     }
 
+    .flight-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .flight-dot {
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: rgba(112, 255, 218, 0.95);
+      box-shadow: 0 0 10px rgba(112, 255, 218, 0.8);
+      transform: translate(-50%, -50%);
+      opacity: 0.92;
+    }
+
+    .flight-dot.ground {
+      background: rgba(255, 181, 111, 0.95);
+      box-shadow: 0 0 10px rgba(255, 181, 111, 0.85);
+    }
+
     .marker {
       position: absolute;
       z-index: 2;
@@ -536,6 +559,7 @@
           <ul class="list">
             <li><span>Live Flights</span><span class="badge" id="liveFlights">17</span></li>
             <li><span>Satellites</span><span class="badge" id="satellites">113</span></li>
+            <li><span>OpenSky Mode</span><span class="badge" id="openSkyMode">idle</span></li>
             <li><span>Traffic Mesh</span><span class="badge" id="trafficMesh">active</span></li>
             <li><span>CCTV Heat</span><span class="badge" id="cctvHeat">normal</span></li>
             <li><span>Command Events</span><span class="badge" id="eventLayers">0</span></li>
@@ -560,6 +584,7 @@
           <div class="scope">
             <div class="terrain"></div>
             <div class="scan"></div>
+            <div id="flightLayer" class="flight-layer"></div>
             <div id="aircraft" class="aircraft"></div>
             <div id="trace" class="trace"></div>
             <div class="marker a" data-name="A12"></div>
@@ -611,6 +636,7 @@
   </div>
 
   <script>
+    const OPEN_SKY_BBOX = { lamin: 1.14, lomin: 103.47, lamax: 1.50, lomax: 104.15 };
     const liveDot = document.getElementById("liveDot");
     const conn = document.getElementById("conn");
     const clock = document.getElementById("clock");
@@ -628,10 +654,15 @@
     const scopeStatus = document.getElementById("scopeStatus");
     const aircraft = document.getElementById("aircraft");
     const trace = document.getElementById("trace");
+    const flightLayer = document.getElementById("flightLayer");
     const liveFlights = document.getElementById("liveFlights");
     const satellites = document.getElementById("satellites");
+    const openSkyMode = document.getElementById("openSkyMode");
     const trafficMesh = document.getElementById("trafficMesh");
     const cctvHeat = document.getElementById("cctvHeat");
+
+    let latestEventCount = 0;
+    let latestAircraftCount = 0;
 
     function setConnection(ok) {
       conn.textContent = ok ? "live" : "retrying";
@@ -640,8 +671,11 @@
     }
 
     function fmtClock() {
-      const now = new Date();
-      clock.textContent = now.toLocaleTimeString();
+      clock.textContent = new Date().toLocaleTimeString();
+    }
+
+    function updateScopeStatus() {
+      scopeStatus.textContent = `Tracking ${latestEventCount} command signals • ${latestAircraftCount} aircraft`;
     }
 
     function escapeHtml(text) {
@@ -683,7 +717,6 @@
       alerts.innerHTML = "";
       if (latest.length === 0) {
         alerts.innerHTML = "<li>No command alerts yet. Ask a question from the app to populate this feed.</li>";
-        ticker.textContent = "No active command events.";
         return;
       }
       for (const item of latest) {
@@ -702,9 +735,10 @@
 
     function updateDerivedStats(events) {
       const total = events.length;
+      latestEventCount = total;
       eventCount.textContent = String(total);
       eventLayers.textContent = String(total);
-      scopeStatus.textContent = "Tracking " + total + " signals";
+      updateScopeStatus();
 
       const critical = events.filter((item) => {
         const p = item?.commandCard?.priority || "";
@@ -722,15 +756,54 @@
       const last = events[events.length - 1];
       const intent = last?.intent || last?.commandCard?.intent || "observe_only";
       lastIntent.textContent = intent;
-
       opsTempo.textContent = total > 30 ? "high" : total > 10 ? "elevated" : "stable";
-      liveFlights.textContent = String(15 + (total % 14));
-      satellites.textContent = String(102 + (total % 29));
-      trafficMesh.textContent = rate > 35 ? "dense" : "active";
       cctvHeat.textContent = rate > 60 ? "hot" : rate > 25 ? "elevated" : "normal";
     }
 
-    async function poll() {
+    function projectToScope(lat, lon) {
+      const x = ((lon - OPEN_SKY_BBOX.lomin) / (OPEN_SKY_BBOX.lomax - OPEN_SKY_BBOX.lomin)) * 100;
+      const y = (1 - ((lat - OPEN_SKY_BBOX.lamin) / (OPEN_SKY_BBOX.lamax - OPEN_SKY_BBOX.lamin))) * 100;
+      if (x < 0 || x > 100 || y < 0 || y > 100) {
+        return null;
+      }
+      return { x, y };
+    }
+
+    function renderFlightLayer(states) {
+      flightLayer.innerHTML = "";
+      const items = Array.isArray(states) ? states.slice(0, 180) : [];
+      for (const state of items) {
+        const lat = Number(state?.latitude);
+        const lon = Number(state?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          continue;
+        }
+        const point = projectToScope(lat, lon);
+        if (!point) continue;
+        const dot = document.createElement("span");
+        dot.className = "flight-dot" + (state?.onGround ? " ground" : "");
+        dot.style.left = point.x.toFixed(2) + "%";
+        dot.style.top = point.y.toFixed(2) + "%";
+        const callsign = state?.callsign || state?.icao24 || "unknown";
+        dot.title = `${callsign} (${lat.toFixed(3)}, ${lon.toFixed(3)})`;
+        flightLayer.appendChild(dot);
+      }
+    }
+
+    function updateOpenSkyStats(payload) {
+      latestAircraftCount = Number(payload?.count || 0);
+      updateScopeStatus();
+      liveFlights.textContent = String(latestAircraftCount);
+      satellites.textContent = String(100 + (latestAircraftCount % 33));
+      openSkyMode.textContent = payload?.authMode || "anonymous";
+      trafficMesh.textContent = latestAircraftCount > 40 ? "dense" : latestAircraftCount > 0 ? "active" : "idle";
+      renderFlightLayer(payload?.states || []);
+      if (payload?.warning) {
+        ticker.textContent = payload.warning;
+      }
+    }
+
+    async function pollEvents() {
       try {
         const res = await fetch("/api/events?limit=180", { cache: "no-store" });
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -742,7 +815,39 @@
       } catch (err) {
         setConnection(false);
       } finally {
-        window.setTimeout(poll, 2200);
+        window.setTimeout(pollEvents, 2200);
+      }
+    }
+
+    async function pollOpenSky() {
+      let nextPollMs = 60_000;
+      try {
+        const query = new URLSearchParams({
+          lamin: String(OPEN_SKY_BBOX.lamin),
+          lomin: String(OPEN_SKY_BBOX.lomin),
+          lamax: String(OPEN_SKY_BBOX.lamax),
+          lomax: String(OPEN_SKY_BBOX.lomax),
+          limit: "180",
+        });
+        const res = await fetch(`/api/opensky?${query.toString()}`, { cache: "no-store" });
+        const payload = await res.json();
+        if (!res.ok || !payload?.ok) {
+          throw new Error(payload?.error || ("HTTP " + res.status));
+        }
+        const pollFromApi = Number(payload.recommendedPollMs);
+        if (Number.isFinite(pollFromApi) && pollFromApi > 0) {
+          nextPollMs = pollFromApi;
+        }
+        updateOpenSkyStats(payload);
+      } catch (err) {
+        latestAircraftCount = 0;
+        updateScopeStatus();
+        openSkyMode.textContent = "offline";
+        liveFlights.textContent = "0";
+        trafficMesh.textContent = "stale";
+        renderFlightLayer([]);
+      } finally {
+        window.setTimeout(pollOpenSky, nextPollMs);
       }
     }
 
@@ -754,7 +859,6 @@
       aircraft.style.left = x + "%";
       aircraft.style.top = y + "%";
       aircraft.style.transform = "rotate(" + heading + "deg)";
-
       trace.style.left = x + "%";
       trace.style.top = y + "%";
       trace.style.transform = "rotate(" + (heading + 180) + "deg)";
@@ -763,7 +867,8 @@
 
     fmtClock();
     setInterval(fmtClock, 1000);
-    poll();
+    pollEvents();
+    pollOpenSky();
     requestAnimationFrame(animateAircraft);
   </script>
 </body>
