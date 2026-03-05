@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import sqlite3
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
@@ -35,6 +36,11 @@ CAS_THROTTLED_UNTIL = 0.0
 DB_CONN: sqlite3.Connection | None = None
 OPENSKY_TOKEN: str | None = None
 OPENSKY_TOKEN_EXPIRES_AT = 0.0
+PTT_ADB_SERIAL = os.getenv("PTT_ADB_SERIAL", "").strip()
+PTT_ANDROID_COMPONENT = os.getenv(
+    "PTT_ANDROID_COMPONENT",
+    "com.certis.kerbside/com.meta.wearable.dat.externalsampleapps.cameraaccess.MainActivity",
+).strip()
 
 
 def _read_int_env(name: str, default: int) -> int:
@@ -504,6 +510,112 @@ def fetch_opensky_states(
     return HTTPStatus.OK, payload
 
 
+def _adb_connected_devices() -> list[str]:
+    result = subprocess.run(
+        ["adb", "devices"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=8,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "adb devices failed")
+
+    serials: list[str] = []
+    for line in result.stdout.splitlines()[1:]:
+        entry = line.strip()
+        if not entry:
+            continue
+        parts = entry.split()
+        if len(parts) >= 2 and parts[1] == "device":
+            serials.append(parts[0])
+    return serials
+
+
+def trigger_phone_ptt() -> tuple[int, dict[str, Any]]:
+    try:
+        serials = _adb_connected_devices()
+    except FileNotFoundError:
+        return HTTPStatus.SERVICE_UNAVAILABLE, {
+            "ok": False,
+            "error": "adb is not installed on this host.",
+        }
+    except subprocess.TimeoutExpired:
+        return HTTPStatus.GATEWAY_TIMEOUT, {
+            "ok": False,
+            "error": "adb devices timed out.",
+        }
+    except RuntimeError as err:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": str(err)}
+
+    target_serial = PTT_ADB_SERIAL
+    if target_serial:
+        if target_serial not in serials:
+            return HTTPStatus.BAD_REQUEST, {
+                "ok": False,
+                "error": f"Configured PTT_ADB_SERIAL '{target_serial}' is not connected.",
+                "connected": serials,
+            }
+    else:
+        if not serials:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "No Android device connected over adb.",
+            }
+        if len(serials) > 1:
+            return HTTPStatus.CONFLICT, {
+                "ok": False,
+                "error": "Multiple adb devices connected. Set PTT_ADB_SERIAL.",
+                "connected": serials,
+            }
+        target_serial = serials[0]
+
+    cmd = [
+        "adb",
+        "-s",
+        target_serial,
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-a",
+        "android.intent.action.VIEW",
+        "-d",
+        "cameraaccess://ptt",
+        "-n",
+        PTT_ANDROID_COMPONENT,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=12,
+        )
+    except subprocess.TimeoutExpired:
+        return HTTPStatus.GATEWAY_TIMEOUT, {
+            "ok": False,
+            "error": "adb launch timed out.",
+            "serial": target_serial,
+        }
+
+    if result.returncode != 0:
+        return HTTPStatus.BAD_GATEWAY, {
+            "ok": False,
+            "error": result.stderr.strip() or result.stdout.strip() or "adb launch failed",
+            "serial": target_serial,
+        }
+
+    return HTTPStatus.OK, {
+        "ok": True,
+        "message": "PTT launched on phone.",
+        "serial": target_serial,
+        "component": PTT_ANDROID_COMPONENT,
+        "adbOutput": result.stdout.strip(),
+    }
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "CameraAccessDashboard/1.0"
 
@@ -648,6 +760,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/ptt":
+            status, payload = trigger_phone_ptt()
+            self._send_json(payload, status=status)
+            return
         if parsed.path != "/api/events":
             self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
             return

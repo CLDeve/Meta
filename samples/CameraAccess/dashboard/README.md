@@ -21,6 +21,8 @@ Optional throttle settings:
 - `OPENSKY_TIMEOUT_SECONDS` (default `15`)
 - `OPENSKY_POLL_ANON_MS` (default `240000`)
 - `OPENSKY_POLL_AUTH_MS` (default `30000`)
+- `PTT_ADB_SERIAL` (optional; target a specific adb device for dashboard PTT button)
+- `PTT_ANDROID_COMPONENT` (optional; default `com.certis.kerbside/com.meta.wearable.dat.externalsampleapps.cameraaccess.MainActivity`)
 
 Open in browser:
 
@@ -53,6 +55,8 @@ Endpoints:
 - `GET /api/opensky?lamin=...&lomin=...&lamax=...&lomax=...&limit=180` proxies:
   `https://opensky-network.org/api/states/all`
   (uses OAuth2 when `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` are set; otherwise anonymous mode)
+- `POST /api/ptt` sends `cameraaccess://ptt` to the adb-connected phone app from the laptop backend.
+  Requires adb on the same machine running `server.py`.
 
 ## Render persistence note
 

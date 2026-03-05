@@ -256,8 +256,26 @@
     }
 
     if (pttBtn) {
-      pttBtn.addEventListener("click", () => {
-        window.location.href = "cameraaccess://ptt";
+      pttBtn.addEventListener("click", async () => {
+        const oldText = pttBtn.textContent;
+        pttBtn.disabled = true;
+        pttBtn.textContent = "PTT...";
+        try {
+          const resp = await fetch("/api/ptt", { method: "POST" });
+          const payload = await resp.json().catch(() => ({}));
+          if (!resp.ok || !payload.ok) {
+            const errText = payload.error || `HTTP ${resp.status}`;
+            throw new Error(errText);
+          }
+          setConnection(true, "ptt sent");
+        } catch (error) {
+          const errText = error instanceof Error ? error.message : "PTT failed";
+          setConnection(false, "ptt failed");
+          window.alert(`PTT failed: ${errText}`);
+        } finally {
+          pttBtn.disabled = false;
+          pttBtn.textContent = oldText;
+        }
       });
     }
 
