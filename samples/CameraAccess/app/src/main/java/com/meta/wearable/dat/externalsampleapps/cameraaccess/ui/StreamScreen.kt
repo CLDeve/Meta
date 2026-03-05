@@ -15,6 +15,7 @@ package com.meta.wearable.dat.externalsampleapps.cameraaccess.ui
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -88,6 +89,7 @@ fun StreamScreen(
         ),
 ) {
   val streamUiState by streamViewModel.uiState.collectAsStateWithLifecycle()
+  val context = LocalContext.current
   var isChatExpanded by rememberSaveable { mutableStateOf(false) }
 
   LaunchedEffect(Unit) { streamViewModel.startStream() }
@@ -191,7 +193,7 @@ fun StreamScreen(
 
           SwitchButton(
               label = stringResource(R.string.describe_button_short_title),
-              onClick = { streamViewModel.describeCurrentFrame() },
+              onClick = { streamViewModel.startVoiceDescribe(context) },
               enabled = !streamUiState.isDescribeLoading,
               modifier = Modifier.weight(1f),
           )
