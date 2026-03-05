@@ -28,5 +28,6 @@ data class StreamUiState(
     val commandCenterStatus: String? = null,
     val commandCenterError: String? = null,
     val isListening: Boolean = false,
+    val isHandsFreeModeEnabled: Boolean = false,
     val voiceHeardText: String? = null,
 )

@@ -147,15 +147,14 @@ fun StreamScreen(
 
           SwitchButton(
               label =
-                  if (streamUiState.isListening) stringResource(id = R.string.voice_listening_button_short)
-                  else stringResource(id = R.string.voice_button_short_title),
-              onClick = {
-                if (streamUiState.isListening) {
-                  streamViewModel.stopVoiceDescribe()
-                } else {
-                  streamViewModel.startVoiceDescribe(context)
-                }
-              },
+                  when {
+                    streamUiState.isListening ->
+                        stringResource(id = R.string.voice_listening_button_short)
+                    streamUiState.isHandsFreeModeEnabled ->
+                        stringResource(id = R.string.hands_free_button_on_short_title)
+                    else -> stringResource(id = R.string.hands_free_button_short_title)
+                  },
+              onClick = { streamViewModel.toggleHandsFreeVoice(context) },
               enabled = !streamUiState.isDescribeLoading,
               modifier = Modifier.weight(1f),
           )
@@ -209,6 +208,7 @@ private fun DescribeOverlay(
   if (
       !streamUiState.isDescribeLoading &&
           !streamUiState.isListening &&
+          !streamUiState.isHandsFreeModeEnabled &&
           streamUiState.describeResult.isNullOrEmpty() &&
           streamUiState.describeError.isNullOrEmpty() &&
           streamUiState.commandCenterStatus.isNullOrEmpty() &&
@@ -230,6 +230,14 @@ private fun DescribeOverlay(
           color = Color.White,
           style = AppTypography.Body,
       )
+
+      if (streamUiState.isHandsFreeModeEnabled) {
+        Text(
+            text = stringResource(id = R.string.hands_free_mode_active),
+            color = Color(0xFFB9F6CA),
+            style = AppTypography.Body,
+        )
+      }
 
       when {
         streamUiState.isDescribeLoading -> {

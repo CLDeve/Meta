@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -84,6 +85,8 @@ class StreamViewModel(
     private const val AI_READ_TIMEOUT_MS = 45_000
     private const val STREAM_FPS = 15
     private const val PREVIEW_JPEG_QUALITY = 85
+    private const val HANDS_FREE_RESTART_DELAY_MS = 450L
+    private const val HANDS_FREE_STOP_MESSAGE = "Hands-free mode stopped."
     private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
     private const val COMMAND_CENTER_DISABLED =
         "Set COMMAND_CENTER_URL to forward responses to command centre"
@@ -104,6 +107,8 @@ class StreamViewModel(
   private var stateJob: Job? = null
   private var timerJob: Job? = null
   private var speechRecognizer: SpeechRecognizer? = null
+  private var latestVoiceContext: Context? = null
+  private var suppressNextVoiceError = false
   private var voiceRetryCount: Int = 0
   private var textToSpeech: TextToSpeech? = null
 
@@ -166,6 +171,7 @@ class StreamViewModel(
     videoJob = null
     stateJob?.cancel()
     stateJob = null
+    stopVoiceDescribe(disableHandsFreeMode = true)
     streamSession?.close()
     streamSession = null
     streamTimer.stopTimer()
@@ -211,10 +217,13 @@ class StreamViewModel(
 
       val describeResult = result.getOrNull()
       val describeError = result.exceptionOrNull()?.message
-      if (!describeResult.isNullOrBlank()) {
-        speakText(describeResult)
-      } else if (!describeError.isNullOrBlank()) {
-        speakText("I could not get an answer right now. Please try again.")
+      val handsFreeEnabled = _uiState.value.isHandsFreeModeEnabled
+      if (!handsFreeEnabled) {
+        if (!describeResult.isNullOrBlank()) {
+          speakText(describeResult)
+        } else if (!describeError.isNullOrBlank()) {
+          speakText("I could not get an answer right now. Please try again.")
+        }
       }
       var commandCenterStatus: String? = null
       var commandCenterError: String? = null
@@ -233,6 +242,10 @@ class StreamViewModel(
             commandCenterStatus = commandCenterStatus,
             commandCenterError = commandCenterError,
         )
+      }
+
+      if (handsFreeEnabled) {
+        restartHandsFreeListening()
       }
     }
   }
@@ -281,12 +294,31 @@ class StreamViewModel(
     streamTimer.resetTimer()
   }
 
+  fun toggleHandsFreeVoice(context: Context) {
+    if (_uiState.value.isHandsFreeModeEnabled) {
+      stopVoiceDescribe(disableHandsFreeMode = true)
+      return
+    }
+
+    _uiState.update {
+      it.copy(
+          isHandsFreeModeEnabled = true,
+          describeError = null,
+          commandCenterStatus = null,
+          commandCenterError = null,
+      )
+    }
+    startVoiceDescribe(context)
+  }
+
   fun startVoiceDescribe(context: Context) {
+    latestVoiceContext = context.applicationContext
     if (!SpeechRecognizer.isRecognitionAvailable(context)) {
       _uiState.update {
         it.copy(
             voiceHeardText = null,
             isListening = false,
+            isHandsFreeModeEnabled = false,
             describeError = "Speech recognition not available",
         )
       }
@@ -295,6 +327,7 @@ class StreamViewModel(
 
     speechRecognizer?.destroy()
     speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+    suppressNextVoiceError = false
     voiceRetryCount = 0
     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
       putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -315,6 +348,12 @@ class StreamViewModel(
           override fun onBufferReceived(buffer: ByteArray?) {}
           override fun onEndOfSpeech() {}
           override fun onError(error: Int) {
+            if (suppressNextVoiceError) {
+              suppressNextVoiceError = false
+              _uiState.update { it.copy(isListening = false) }
+              return
+            }
+
             val canRetry =
                 (error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) &&
@@ -329,6 +368,13 @@ class StreamViewModel(
               return
             }
             _uiState.update { it.copy(isListening = false, describeError = speechErrorMessage(error)) }
+            if (
+                _uiState.value.isHandsFreeModeEnabled &&
+                    (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                        error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+            ) {
+              restartHandsFreeListening()
+            }
           }
           override fun onResults(results: Bundle?) {
             val text =
@@ -340,7 +386,20 @@ class StreamViewModel(
             voiceRetryCount = 0
             _uiState.update { it.copy(isListening = false, voiceHeardText = normalizedText) }
             if (normalizedText.isNotEmpty()) {
-              describeCurrentFrame(normalizedText)
+              if (isStopHandsFreeCommand(normalizedText)) {
+                stopVoiceDescribe(disableHandsFreeMode = true)
+                _uiState.update {
+                  it.copy(
+                      voiceHeardText = normalizedText,
+                      describeResult = HANDS_FREE_STOP_MESSAGE,
+                      describeError = null,
+                      commandCenterStatus = null,
+                      commandCenterError = null,
+                  )
+                }
+              } else {
+                describeCurrentFrame(normalizedText)
+              }
             } else {
               _uiState.update {
                 it.copy(
@@ -348,6 +407,9 @@ class StreamViewModel(
                     commandCenterStatus = null,
                     commandCenterError = null,
                 )
+              }
+              if (_uiState.value.isHandsFreeModeEnabled) {
+                restartHandsFreeListening()
               }
             }
           }
@@ -359,10 +421,46 @@ class StreamViewModel(
     speechRecognizer?.startListening(intent)
   }
 
-  fun stopVoiceDescribe() {
+  fun stopVoiceDescribe(disableHandsFreeMode: Boolean = true) {
     voiceRetryCount = 0
+    suppressNextVoiceError = true
     speechRecognizer?.stopListening()
-    _uiState.update { it.copy(isListening = false) }
+    speechRecognizer?.cancel()
+    _uiState.update {
+      it.copy(
+          isListening = false,
+          isHandsFreeModeEnabled =
+              if (disableHandsFreeMode) false else it.isHandsFreeModeEnabled,
+      )
+    }
+  }
+
+  private fun restartHandsFreeListening(delayMs: Long = HANDS_FREE_RESTART_DELAY_MS) {
+    if (!_uiState.value.isHandsFreeModeEnabled) {
+      return
+    }
+    val context = latestVoiceContext ?: getApplication<Application>().applicationContext
+    viewModelScope.launch {
+      delay(delayMs)
+      if (
+          _uiState.value.isHandsFreeModeEnabled &&
+              !_uiState.value.isListening &&
+              !_uiState.value.isDescribeLoading
+      ) {
+        startVoiceDescribe(context)
+      }
+    }
+  }
+
+  private fun isStopHandsFreeCommand(text: String): Boolean {
+    val normalized = text.trim().lowercase(Locale.ROOT)
+    return normalized == "stop listening" ||
+        normalized == "stop voice" ||
+        normalized == "stop voice mode" ||
+        normalized == "stop hands free" ||
+        normalized == "stop hands-free" ||
+        normalized == "cancel voice mode" ||
+        normalized == "exit voice mode"
   }
 
   private fun speechErrorMessage(error: Int): String {

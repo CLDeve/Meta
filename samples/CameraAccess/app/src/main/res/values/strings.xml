@@ -48,6 +48,9 @@
     <string name="voice_listening_button" description="Voice button while listening">Listening…</string>
     <string name="voice_listening_button_short" description="Compact voice listening button label">Listening…</string>
     <string name="voice_listening" description="Listening status">Listening for your question…</string>
+    <string name="hands_free_button_short_title" description="Compact hands-free toggle button label">Hands-free</string>
+    <string name="hands_free_button_on_short_title" description="Compact hands-free enabled button label">HF On</string>
+    <string name="hands_free_mode_active" description="Hands-free mode active hint">Hands-free is on. Say \"stop listening\" to exit.</string>
     <string name="voice_heard_label" description="Prefix for heard voice question">You asked:</string>
     <string name="command_center_error_prefix" description="Prefix for command center errors">Command centre:</string>
 
