@@ -325,6 +325,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_text(html, "text/html; charset=utf-8")
             return
 
+        if parsed.path in {"/worldview", "/worldview.html"}:
+            worldview_path = Path(__file__).with_name("worldview.html")
+            if not worldview_path.exists():
+                self._send_json({"error": "Missing worldview.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            html = worldview_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
         if parsed.path == "/healthz":
             self._send_json(
                 {

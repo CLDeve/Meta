@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Worldview Command Console</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap");
+
+    :root {
+      color-scheme: dark;
+      --bg: #03070f;
+      --bg-2: #061325;
+      --panel: rgba(8, 20, 36, 0.82);
+      --panel-border: rgba(98, 177, 255, 0.22);
+      --text: #d9eeff;
+      --muted: #86a9cb;
+      --accent: #52c7ff;
+      --accent-2: #62ffd8;
+      --warn: #ffb46f;
+      --danger: #ff6d7d;
+      --font-head: "Rajdhani", "Avenir Next", sans-serif;
+      --font-body: "Space Grotesk", "Avenir Next", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font-body);
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at -10% -20%, rgba(83, 176, 255, 0.2), transparent 60%),
+        radial-gradient(900px 600px at 115% 115%, rgba(98, 255, 216, 0.14), transparent 55%),
+        linear-gradient(160deg, var(--bg), var(--bg-2));
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.14;
+      background-image:
+        linear-gradient(rgba(122, 186, 255, 0.22) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(122, 186, 255, 0.22) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: radial-gradient(circle at center, black 35%, transparent 95%);
+    }
+
+    .shell {
+      max-width: 1550px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      box-shadow: inset 0 0 0 1px rgba(146, 208, 255, 0.06), 0 12px 40px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(9px);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: start;
+      padding: 14px 16px;
+    }
+
+    .eyebrow {
+      font-family: var(--font-head);
+      letter-spacing: 0.17em;
+      font-size: 12px;
+      color: var(--accent-2);
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 5px 0 6px;
+      font-family: var(--font-head);
+      font-size: clamp(26px, 3vw, 42px);
+      line-height: 0.95;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #e8f7ff;
+      text-shadow: 0 0 22px rgba(83, 196, 255, 0.26);
+    }
+
+    .subtitle {
+      margin: 0;
+      font-size: 14px;
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .top-right {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      border: 1px solid rgba(143, 208, 255, 0.36);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      color: #d1ecff;
+      background: rgba(10, 31, 53, 0.75);
+      white-space: nowrap;
+    }
+
+    .pill a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      display: inline-block;
+      border-radius: 50%;
+      margin-right: 7px;
+      background: var(--warn);
+      box-shadow: 0 0 12px var(--warn);
+    }
+
+    .dot.live {
+      background: var(--accent-2);
+      box-shadow: 0 0 14px var(--accent-2);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr) 320px;
+      gap: 14px;
+      min-height: 560px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .module {
+      padding: 14px;
+    }
+
+    .module h2 {
+      margin: 0 0 10px;
+      font-family: var(--font-head);
+      font-size: 18px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+      padding: 8px 9px;
+      border-radius: 10px;
+      border: 1px solid rgba(118, 186, 252, 0.2);
+      background: rgba(7, 26, 46, 0.72);
+    }
+
+    .badge {
+      border-radius: 999px;
+      border: 1px solid rgba(140, 215, 255, 0.4);
+      padding: 2px 8px;
+      color: #d8f6ff;
+      font-size: 11px;
+      background: rgba(83, 199, 255, 0.18);
+    }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(180deg, transparent 0%, rgba(8, 22, 38, 0.5) 85%);
+    }
+
+    .hud-row {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-head);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 12px;
+      color: #b9ddff;
+    }
+
+    .scope-wrap {
+      position: relative;
+      z-index: 1;
+      border-radius: 14px;
+      border: 1px solid rgba(116, 178, 245, 0.26);
+      height: 100%;
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at center, rgba(32, 114, 177, 0.16), transparent 67%),
+        linear-gradient(145deg, rgba(6, 20, 37, 0.95), rgba(4, 16, 28, 0.92));
+      overflow: hidden;
+    }
+
+    .scope {
+      width: min(78vw, 600px);
+      aspect-ratio: 1 / 1;
+      border-radius: 50%;
+      border: 1px solid rgba(120, 207, 255, 0.45);
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        inset 0 0 110px rgba(46, 104, 144, 0.54),
+        inset 0 0 0 1px rgba(145, 236, 255, 0.18),
+        0 0 80px rgba(38, 141, 208, 0.16);
+    }
+
+    .terrain {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(115deg, rgba(64, 111, 95, 0.52), rgba(66, 80, 74, 0.42)),
+        repeating-linear-gradient(0deg, rgba(176, 162, 129, 0.26) 0 13px, rgba(116, 141, 116, 0.26) 13px 26px),
+        repeating-linear-gradient(90deg, rgba(196, 171, 126, 0.22) 0 15px, rgba(103, 131, 118, 0.2) 15px 30px);
+      filter: saturate(0.9) contrast(1.08);
+      transform: scale(1.12) rotate(-12deg);
+      animation: drift 20s linear infinite;
+    }
+
+    .scan {
+      position: absolute;
+      inset: 0;
+      background:
+        conic-gradient(from 0deg, transparent 0 70%, rgba(102, 253, 212, 0.32) 80%, transparent 93%),
+        repeating-radial-gradient(circle at center, transparent 0 30px, rgba(80, 195, 255, 0.14) 30px 31px);
+      mix-blend-mode: screen;
+      animation: spin 8s linear infinite;
+    }
+
+    .scope::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, transparent 60%, rgba(5, 13, 22, 0.8) 100%);
+    }
+
+    .aircraft {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      left: 50%;
+      top: 50%;
+      margin-left: -10px;
+      margin-top: -10px;
+      border-radius: 50%;
+      border: 2px solid #8ff2ff;
+      box-shadow: 0 0 20px rgba(98, 250, 255, 0.8);
+      background: rgba(102, 239, 255, 0.18);
+      z-index: 3;
+    }
+
+    .aircraft::before,
+    .aircraft::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      background: #a4f2ff;
+      transform: translate(-50%, -50%);
+    }
+
+    .aircraft::before {
+      width: 2px;
+      height: 14px;
+    }
+
+    .aircraft::after {
+      width: 12px;
+      height: 2px;
+    }
+
+    .trace {
+      position: absolute;
+      width: 170px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(148, 250, 255, 0.75), transparent);
+      transform-origin: left center;
+      z-index: 2;
+      opacity: 0.8;
+    }
+
+    .marker {
+      position: absolute;
+      z-index: 2;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 181, 111, 0.9);
+      box-shadow: 0 0 14px rgba(255, 181, 111, 0.82);
+    }
+
+    .marker::after {
+      content: attr(data-name);
+      position: absolute;
+      top: -22px;
+      left: -18px;
+      font-size: 10px;
+      color: #ffdfa6;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .marker.a { left: 28%; top: 32%; }
+    .marker.b { left: 72%; top: 46%; background: rgba(255, 109, 125, 0.9); box-shadow: 0 0 14px rgba(255, 109, 125, 0.88); }
+    .marker.c { left: 46%; top: 64%; background: rgba(98, 255, 216, 0.9); box-shadow: 0 0 14px rgba(98, 255, 216, 0.86); }
+
+    .scope-hud {
+      position: absolute;
+      inset: 10px;
+      pointer-events: none;
+      color: #9bc4eb;
+      font-family: var(--font-head);
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      z-index: 4;
+    }
+
+    .legend {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .legend .item {
+      border-radius: 999px;
+      border: 1px solid rgba(121, 193, 250, 0.3);
+      background: rgba(9, 29, 52, 0.75);
+      padding: 5px 10px;
+      font-size: 11px;
+      color: #c7e9ff;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat {
+      padding: 10px 11px;
+      border-radius: 10px;
+      border: 1px solid rgba(120, 185, 255, 0.22);
+      background: rgba(8, 25, 42, 0.74);
+    }
+
+    .stat .k {
+      font-size: 10px;
+      color: #8cb1d3;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .stat .v {
+      margin-top: 4px;
+      font-family: var(--font-head);
+      font-size: 24px;
+      letter-spacing: 0.04em;
+    }
+
+    .danger { color: #ff9eab; }
+    .ok { color: #8cffdd; }
+
+    .alerts {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 7px;
+      max-height: 250px;
+      overflow: auto;
+    }
+
+    .alerts li {
+      border-radius: 10px;
+      border: 1px solid rgba(115, 182, 248, 0.24);
+      background: rgba(7, 26, 46, 0.74);
+      padding: 8px 9px;
+      font-size: 12px;
+      line-height: 1.35;
+      color: #cee9ff;
+    }
+
+    .alerts .tag {
+      display: inline-block;
+      border-radius: 999px;
+      border: 1px solid rgba(129, 211, 255, 0.4);
+      padding: 1px 6px;
+      margin-right: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 10px;
+      color: #d3f4ff;
+      background: rgba(71, 176, 255, 0.2);
+    }
+
+    .lower {
+      padding: 12px 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .mode-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .mode {
+      border: 1px solid rgba(120, 191, 251, 0.32);
+      background: rgba(9, 28, 48, 0.72);
+      color: #cae9ff;
+      border-radius: 10px;
+      padding: 7px 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 11px;
+    }
+
+    .mode.active {
+      background: linear-gradient(135deg, rgba(57, 156, 255, 0.36), rgba(71, 255, 221, 0.2));
+      border-color: rgba(115, 227, 255, 0.62);
+      color: #f0feff;
+      box-shadow: 0 0 18px rgba(71, 202, 255, 0.2);
+    }
+
+    .ticker {
+      min-height: 38px;
+      border-radius: 10px;
+      border: 1px solid rgba(121, 191, 252, 0.22);
+      background: rgba(5, 20, 34, 0.88);
+      display: flex;
+      align-items: center;
+      padding: 0 11px;
+      font-size: 12px;
+      color: #bfddf8;
+      letter-spacing: 0.03em;
+    }
+
+    @keyframes drift {
+      from { transform: scale(1.12) rotate(-12deg) translate(0, 0); }
+      to { transform: scale(1.15) rotate(-10deg) translate(-24px, -15px); }
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1220px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+      .top-right {
+        justify-content: flex-start;
+      }
+      .scope {
+        width: min(90vw, 560px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="panel topbar">
+      <div>
+        <div class="eyebrow">Certis Worldview / Geospatial Layering</div>
+        <h1>Intelligence Command Console</h1>
+        <p class="subtitle">Realtime operational picture with alerts, gate pressure and mission overlays from the CameraAccess event stream.</p>
+      </div>
+      <div class="top-right">
+        <div class="pill"><span id="liveDot" class="dot"></span><strong id="conn">syncing</strong></div>
+        <div class="pill">clock: <strong id="clock">--:--:--</strong></div>
+        <div class="pill">events: <strong id="eventCount">0</strong></div>
+        <div class="pill"><a href="/">Event Wall</a></div>
+        <div class="pill"><a href="/flights">Flights</a></div>
+      </div>
+    </header>
+
+    <section class="main">
+      <aside class="stack">
+        <article class="panel module">
+          <h2>Layer Stack</h2>
+          <ul class="list">
+            <li><span>Live Flights</span><span class="badge" id="liveFlights">17</span></li>
+            <li><span>Satellites</span><span class="badge" id="satellites">113</span></li>
+            <li><span>Traffic Mesh</span><span class="badge" id="trafficMesh">active</span></li>
+            <li><span>CCTV Heat</span><span class="badge" id="cctvHeat">normal</span></li>
+            <li><span>Command Events</span><span class="badge" id="eventLayers">0</span></li>
+          </ul>
+        </article>
+        <article class="panel module">
+          <h2>Hot Zone</h2>
+          <ul class="list">
+            <li><span>Busiest Gate</span><span class="badge" id="hotGate">N/A</span></li>
+            <li><span>Latest Intent</span><span class="badge" id="lastIntent">observe_only</span></li>
+            <li><span>Critical Rate</span><span class="badge" id="criticalRate">0%</span></li>
+          </ul>
+        </article>
+      </aside>
+
+      <article class="panel stage">
+        <div class="hud-row">
+          <span>Sector: SIN / Terminal Watch</span>
+          <span id="scopeStatus">Tracking 0 signals</span>
+        </div>
+        <div class="scope-wrap">
+          <div class="scope">
+            <div class="terrain"></div>
+            <div class="scan"></div>
+            <div id="aircraft" class="aircraft"></div>
+            <div id="trace" class="trace"></div>
+            <div class="marker a" data-name="A12"></div>
+            <div class="marker b" data-name="C19"></div>
+            <div class="marker c" data-name="B08"></div>
+            <div class="scope-hud">
+              <span>rec 2026-03-05</span>
+              <span>mode crt / eo / flir</span>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <span class="item">cctv fusion</span>
+          <span class="item">queue pressure</span>
+          <span class="item">voice command intents</span>
+          <span class="item">threat scoring</span>
+          <span class="item">predictive pathing</span>
+        </div>
+      </article>
+
+      <aside class="stack">
+        <article class="panel module">
+          <h2>Telemetry</h2>
+          <div class="telemetry-grid">
+            <div class="stat"><div class="k">Active Alerts</div><div class="v danger" id="activeAlerts">0</div></div>
+            <div class="stat"><div class="k">Resolved</div><div class="v ok" id="resolvedAlerts">0</div></div>
+            <div class="stat"><div class="k">Ops Tempo</div><div class="v" id="opsTempo">stable</div></div>
+            <div class="stat"><div class="k">Link</div><div class="v" id="linkQuality">good</div></div>
+          </div>
+        </article>
+        <article class="panel module">
+          <h2>Live Alerts</h2>
+          <ul class="alerts" id="alerts"></ul>
+        </article>
+      </aside>
+    </section>
+
+    <section class="panel lower">
+      <div class="mode-bar">
+        <span class="mode active">normal</span>
+        <span class="mode">crt</span>
+        <span class="mode">nv</span>
+        <span class="mode">flir</span>
+        <span class="mode">sat</span>
+        <span class="mode">scan</span>
+      </div>
+      <div class="ticker" id="ticker">Waiting for events from /api/events...</div>
+    </section>
+  </div>
+
+  <script>
+    const liveDot = document.getElementById("liveDot");
+    const conn = document.getElementById("conn");
+    const clock = document.getElementById("clock");
+    const eventCount = document.getElementById("eventCount");
+    const eventLayers = document.getElementById("eventLayers");
+    const hotGate = document.getElementById("hotGate");
+    const lastIntent = document.getElementById("lastIntent");
+    const criticalRate = document.getElementById("criticalRate");
+    const activeAlerts = document.getElementById("activeAlerts");
+    const resolvedAlerts = document.getElementById("resolvedAlerts");
+    const opsTempo = document.getElementById("opsTempo");
+    const linkQuality = document.getElementById("linkQuality");
+    const alerts = document.getElementById("alerts");
+    const ticker = document.getElementById("ticker");
+    const scopeStatus = document.getElementById("scopeStatus");
+    const aircraft = document.getElementById("aircraft");
+    const trace = document.getElementById("trace");
+    const liveFlights = document.getElementById("liveFlights");
+    const satellites = document.getElementById("satellites");
+    const trafficMesh = document.getElementById("trafficMesh");
+    const cctvHeat = document.getElementById("cctvHeat");
+
+    function setConnection(ok) {
+      conn.textContent = ok ? "live" : "retrying";
+      liveDot.classList.toggle("live", ok);
+      linkQuality.textContent = ok ? "good" : "weak";
+    }
+
+    function fmtClock() {
+      const now = new Date();
+      clock.textContent = now.toLocaleTimeString();
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function computeBusiestGate(events) {
+      const counts = new Map();
+      for (const item of events) {
+        const gate = item?.commandCard?.targetGate || "";
+        if (!gate) continue;
+        counts.set(gate, (counts.get(gate) || 0) + 1);
+      }
+      let bestGate = "";
+      let bestCount = -1;
+      counts.forEach((count, gate) => {
+        if (count > bestCount) {
+          bestGate = gate;
+          bestCount = count;
+        }
+      });
+      return bestGate || "N/A";
+    }
+
+    function severityTag(priority) {
+      if (priority === "critical") return "critical";
+      if (priority === "high") return "high";
+      if (priority === "medium") return "medium";
+      return "low";
+    }
+
+    function renderAlerts(events) {
+      const latest = events.slice(-8).reverse();
+      alerts.innerHTML = "";
+      if (latest.length === 0) {
+        alerts.innerHTML = "<li>No command alerts yet. Ask a question from the app to populate this feed.</li>";
+        ticker.textContent = "No active command events.";
+        return;
+      }
+      for (const item of latest) {
+        const li = document.createElement("li");
+        const intent = item?.commandCard?.title || item?.intent || "observe_only";
+        const prio = severityTag(item?.commandCard?.priority || "low");
+        const gate = item?.commandCard?.targetGate ? "Gate " + item.commandCard.targetGate : "No gate";
+        const id = Number(item.id || 0);
+        li.innerHTML = `<span class="tag">${escapeHtml(prio)}</span>#${id} ${escapeHtml(intent)} (${escapeHtml(gate)})`;
+        alerts.appendChild(li);
+      }
+      const last = latest[0];
+      const lastText = last?.commandCard?.action || last?.answer || last?.question || "Signal updated.";
+      ticker.textContent = "Latest action: " + String(lastText).slice(0, 180);
+    }
+
+    function updateDerivedStats(events) {
+      const total = events.length;
+      eventCount.textContent = String(total);
+      eventLayers.textContent = String(total);
+      scopeStatus.textContent = "Tracking " + total + " signals";
+
+      const critical = events.filter((item) => {
+        const p = item?.commandCard?.priority || "";
+        return p === "critical" || p === "high";
+      }).length;
+
+      const safe = Math.max(0, total - critical);
+      activeAlerts.textContent = String(critical);
+      resolvedAlerts.textContent = String(safe);
+
+      const rate = total > 0 ? Math.round((critical / total) * 100) : 0;
+      criticalRate.textContent = rate + "%";
+      hotGate.textContent = computeBusiestGate(events);
+
+      const last = events[events.length - 1];
+      const intent = last?.intent || last?.commandCard?.intent || "observe_only";
+      lastIntent.textContent = intent;
+
+      opsTempo.textContent = total > 30 ? "high" : total > 10 ? "elevated" : "stable";
+      liveFlights.textContent = String(15 + (total % 14));
+      satellites.textContent = String(102 + (total % 29));
+      trafficMesh.textContent = rate > 35 ? "dense" : "active";
+      cctvHeat.textContent = rate > 60 ? "hot" : rate > 25 ? "elevated" : "normal";
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/events?limit=180", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        const events = Array.isArray(data.events) ? data.events : [];
+        updateDerivedStats(events);
+        renderAlerts(events);
+        setConnection(true);
+      } catch (err) {
+        setConnection(false);
+      } finally {
+        window.setTimeout(poll, 2200);
+      }
+    }
+
+    function animateAircraft() {
+      const t = Date.now() / 1000;
+      const x = 50 + Math.cos(t * 0.44) * 24;
+      const y = 50 + Math.sin(t * 0.67) * 16;
+      const heading = (Math.sin(t * 0.33) * 180) + 90;
+      aircraft.style.left = x + "%";
+      aircraft.style.top = y + "%";
+      aircraft.style.transform = "rotate(" + heading + "deg)";
+
+      trace.style.left = x + "%";
+      trace.style.top = y + "%";
+      trace.style.transform = "rotate(" + (heading + 180) + "deg)";
+      requestAnimationFrame(animateAircraft);
+    }
+
+    fmtClock();
+    setInterval(fmtClock, 1000);
+    poll();
+    requestAnimationFrame(animateAircraft);
+  </script>
+</body>
+</html>

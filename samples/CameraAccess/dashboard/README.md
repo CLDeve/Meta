@@ -22,6 +22,7 @@ Open in browser:
 - `http://localhost:5055` (same laptop)
 - `http://<laptop-lan-ip>:5055` (other devices on same network)
 - `http://localhost:5055/flights` (flight departures page)
+- `http://localhost:5055/worldview` (geospatial intelligence style page)
 
 ## Android app config
 
