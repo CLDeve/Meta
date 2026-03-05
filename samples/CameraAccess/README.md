@@ -74,6 +74,13 @@ OPENAI_API_KEY="<your-openai-api-key>" \
 ./gradlew :app:installDebug --rerun-tasks
 ```
 
+Or use the helper script so API settings are always included:
+
+```bash
+cd samples/CameraAccess
+OPENAI_API_KEY="<your-openai-api-key>" ./install_with_api.sh
+```
+
 Command centre payload format:
 
 ```json

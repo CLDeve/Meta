@@ -52,7 +52,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
@@ -89,7 +88,6 @@ fun StreamScreen(
         ),
 ) {
   val streamUiState by streamViewModel.uiState.collectAsStateWithLifecycle()
-  val context = LocalContext.current
   var isChatExpanded by rememberSaveable { mutableStateOf(false) }
 
   LaunchedEffect(Unit) { streamViewModel.startStream() }
@@ -174,63 +172,33 @@ fun StreamScreen(
           shape = RoundedCornerShape(20.dp),
           border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
       ) {
-        Column(
+        Row(
             modifier =
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-          Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.spacedBy(8.dp),
-              verticalAlignment = Alignment.CenterVertically,
-          ) {
-            SwitchButton(
-                label = stringResource(R.string.stop_stream_button_short_title),
-                onClick = {
-                  streamViewModel.stopStream()
-                  wearablesViewModel.navigateToDeviceSelection()
-                },
-                isDestructive = true,
-                modifier = Modifier.weight(1f),
-            )
+          SwitchButton(
+              label = stringResource(R.string.stop_stream_button_short_title),
+              onClick = {
+                streamViewModel.stopStream()
+                wearablesViewModel.navigateToDeviceSelection()
+              },
+              isDestructive = true,
+              modifier = Modifier.weight(1f),
+          )
 
-            SwitchButton(
-                label = stringResource(R.string.describe_button_short_title),
-                onClick = { streamViewModel.describeCurrentFrame() },
-                enabled = !streamUiState.isDescribeLoading,
-                modifier = Modifier.weight(1f),
-            )
+          SwitchButton(
+              label = stringResource(R.string.describe_button_short_title),
+              onClick = { streamViewModel.describeCurrentFrame() },
+              enabled = !streamUiState.isDescribeLoading,
+              modifier = Modifier.weight(1f),
+          )
 
-            SwitchButton(
-                label =
-                    when {
-                      streamUiState.isListening ->
-                          stringResource(id = R.string.voice_listening_button_short)
-                      streamUiState.isHandsFreeModeEnabled ->
-                          stringResource(id = R.string.hands_free_button_on_short_title)
-                      else -> stringResource(id = R.string.hands_free_button_short_title)
-                    },
-                onClick = { streamViewModel.toggleHandsFreeVoice(context) },
-                enabled = !streamUiState.isDescribeLoading,
-                modifier = Modifier.weight(1f),
-            )
-          }
-
-          Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.End,
-              verticalAlignment = Alignment.CenterVertically,
-          ) {
-            TimerButton(
-                timerMode = streamUiState.timerMode,
-                onClick = { streamViewModel.cycleTimerMode() },
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            CaptureButton(
-                onClick = { streamViewModel.capturePhoto() },
-            )
-          }
+          CaptureButton(
+              onClick = { streamViewModel.capturePhoto() },
+          )
         }
       }
     }
