@@ -351,7 +351,16 @@ class StreamViewModel(
       return AssistantIntent.AIRPORT_INFO
     }
     if (
-        listOf("vp", "vice president", "head ops", "head of ops", "who is my vp", "who is my head ops")
+        listOf(
+                "vp",
+                "vice president",
+                "head ops",
+                "head of ops",
+                "who is my vp",
+                "who is my head ops",
+                "alvin lim",
+                "jeremin",
+            )
             .any { normalized.contains(it) }
     ) {
       return AssistantIntent.ORG_INFO
@@ -463,6 +472,10 @@ class StreamViewModel(
   private fun answerOrgInfo(question: String): String {
     val normalized = question.lowercase(Locale.ROOT)
     return when {
+      normalized.contains("alvin lim") ->
+          "Alvin Lim is your VP."
+      normalized.contains("jeremin") ->
+          "Jeremin is your Head Ops."
       normalized.contains("head ops") || normalized.contains("head of ops") ->
           "Your Head Ops is Jeremin."
       normalized.contains("vp") || normalized.contains("vice president") ->
