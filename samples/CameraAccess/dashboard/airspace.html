@@ -307,7 +307,7 @@
     const rateEl = document.getElementById("rate");
     const updatedEl = document.getElementById("updated");
     const flightList = document.getElementById("flightList");
-    const SIM_UPDATE_MS = 1200;
+    const SIM_UPDATE_MS = 2000;
     let simTimer = null;
     let simulatedFlights = [];
 
@@ -421,9 +421,32 @@
     }
 
     function distanceToSingapore(lat, lon) {
-      const dx = lat - SIN_CENTER[0];
-      const dy = lon - SIN_CENTER[1];
+      const latKm = 111.32;
+      const lonKm = 111.32 * Math.cos((SIN_CENTER[0] * Math.PI) / 180);
+      const dx = (lat - SIN_CENTER[0]) * latKm;
+      const dy = (lon - SIN_CENTER[1]) * lonKm;
       return Math.sqrt((dx * dx) + (dy * dy));
+    }
+
+    function etaMinutes(state) {
+      const lat = Number(state?.latitude);
+      const lon = Number(state?.longitude);
+      const speedMs = Number(state?.velocity);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(speedMs) || speedMs <= 0) {
+        return null;
+      }
+      const distanceKm = distanceToSingapore(lat, lon);
+      const speedKmPerMin = (speedMs * 3.6) / 60;
+      if (speedKmPerMin <= 0) {
+        return null;
+      }
+      return Math.max(1, Math.round(distanceKm / speedKmPerMin));
+    }
+
+    function fmtEta(state) {
+      const mins = etaMinutes(state);
+      if (!Number.isFinite(mins)) return "n/a";
+      return `${mins} min`;
     }
 
     function isInboundFlight(state) {
@@ -459,15 +482,19 @@
     function tickSimulation() {
       simulatedFlights = simulatedFlights.map((flight) => {
         const heading = (Number(flight.trueTrack) || 0) * (Math.PI / 180);
-        const latStep = Math.cos(heading) * 0.012 + randBetween(-0.0015, 0.0015);
-        const lonStep = Math.sin(heading) * 0.016 + randBetween(-0.0015, 0.0015);
+        const speedMs = Number(flight.velocity) || 200;
+        const distanceKm = (speedMs * (SIM_UPDATE_MS / 1000)) / 1000;
+        const latStep = (Math.cos(heading) * distanceKm) / 111.32 + randBetween(-0.00015, 0.00015);
+        const lonScale = 111.32 * Math.cos((Number(flight.latitude) * Math.PI) / 180);
+        const lonStep =
+          ((Math.sin(heading) * distanceKm) / Math.max(1, lonScale)) + randBetween(-0.00015, 0.00015);
         return {
           ...flight,
           latitude: normalizeLat(flight.latitude + latStep),
           longitude: normalizeLon(flight.longitude + lonStep),
-          trueTrack: (Number(flight.trueTrack) + randBetween(-8, 8) + 360) % 360,
-          baroAltitude: Math.max(900, Number(flight.baroAltitude) + randBetween(-140, 140)),
-          velocity: Math.max(150, Number(flight.velocity) + randBetween(-10, 10)),
+          trueTrack: (Number(flight.trueTrack) + randBetween(-2.5, 2.5) + 360) % 360,
+          baroAltitude: Math.max(900, Number(flight.baroAltitude) + randBetween(-45, 20)),
+          velocity: Math.max(150, Number(flight.velocity) + randBetween(-4, 4)),
         };
       });
       renderFlights(simulatedFlights);
@@ -516,11 +543,13 @@
         const altitude = fmtAltitude(Number(state.baroAltitude ?? state.geoAltitude));
         const speed = fmtSpeed(Number(state.velocity));
         const origin = state.originCountry || "Unknown";
+        const eta = fmtEta(state);
         return `
           <li>
             <strong>${escapeHtml(callsign)}</strong>
             <span class="muted">${escapeHtml(origin)}</span>
             <span>Altitude: ${escapeHtml(altitude)} • Speed: ${escapeHtml(speed)}</span>
+            <span>Estimated landing: ${escapeHtml(eta)}</span>
           </li>
         `;
       }).join("");
@@ -543,12 +572,14 @@
         const altitude = fmtAltitude(Number(state?.baroAltitude ?? state?.geoAltitude));
         const speed = fmtSpeed(Number(state?.velocity));
         const heading = Number.isFinite(Number(state?.trueTrack)) ? `${Math.round(Number(state.trueTrack))}°` : "n/a";
+        const eta = fmtEta(state);
         marker.bindPopup(`
           <strong>${escapeHtml(callsign)}</strong><br/>
           Country: ${escapeHtml(state?.originCountry || "Unknown")}<br/>
           Altitude: ${escapeHtml(altitude)}<br/>
           Speed: ${escapeHtml(speed)}<br/>
-          Track: ${escapeHtml(heading)}
+          Track: ${escapeHtml(heading)}<br/>
+          Estimated landing: ${escapeHtml(eta)}
         `);
         flightsLayer.addLayer(marker);
       }
