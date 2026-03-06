@@ -116,6 +116,10 @@ class StreamViewModel(
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
     private const val HANDS_FREE_STOP_MESSAGE = "Hands-free mode stopped."
+    private const val PATROL_SCAN_INTERVAL_MS = 4_000L
+    private const val PATROL_ALERT_COOLDOWN_MS = 20_000L
+    private const val PATROL_START_MESSAGE = "Patrol mode started. I will alert you if I see a possible unattended item."
+    private const val PATROL_STOP_MESSAGE = "Patrol mode stopped."
     private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
     private const val COMMAND_CENTER_DISABLED =
         "Set COMMAND_CENTER_URL to forward responses to command centre"
@@ -140,6 +144,7 @@ class StreamViewModel(
   private var videoJob: Job? = null
   private var stateJob: Job? = null
   private var timerJob: Job? = null
+  private var patrolJob: Job? = null
   private var lastPreviewFrameAtMs: Long = 0L
   private var speechRecognizer: SpeechRecognizer? = null
   private var latestVoiceContext: Context? = null
@@ -152,6 +157,8 @@ class StreamViewModel(
   private var voiceRetryCount: Int = 0
   private var textToSpeech: TextToSpeech? = null
   private var isSpeakingAnswer = false
+  private var lastPatrolAlertAtMs: Long = 0L
+  private var lastPatrolAlertText: String? = null
 
   init {
     // Collect timer state
@@ -215,6 +222,7 @@ class StreamViewModel(
     videoJob = null
     stateJob?.cancel()
     stateJob = null
+    stopPatrolMode()
     stopVoiceDescribe(disableHandsFreeMode = true)
     streamSession?.close()
     streamSession = null
@@ -572,6 +580,12 @@ class StreamViewModel(
 
   private fun handleLocalPhoneCommand(question: String): Boolean {
     val normalized = question.lowercase(Locale.ROOT)
+    if (isStartPatrolCommand(normalized)) {
+      return startPatrolMode(question)
+    }
+    if (isStopPatrolCommand(normalized)) {
+      return stopPatrolMode(question)
+    }
     val hasCiocTarget = normalized.contains("cioc") || normalized.contains("c i o c")
     val wantsCall = normalized.contains("call") || normalized.contains("connect")
     if (!hasCiocTarget || !wantsCall) {
@@ -626,6 +640,164 @@ class StreamViewModel(
           false
         }
   }
+
+  private fun isStartPatrolCommand(text: String): Boolean {
+    return listOf(
+            "patroling start",
+            "patrolling start",
+            "start patrol",
+            "start patrolling",
+            "start patrol mode",
+            "patrol mode start",
+            "begin patrol",
+        )
+        .any { text.contains(it) }
+  }
+
+  private fun isStopPatrolCommand(text: String): Boolean {
+    return listOf(
+            "patroling stop",
+            "patrolling stop",
+            "stop patrol",
+            "stop patrolling",
+            "stop patrol mode",
+            "patrol mode stop",
+            "end patrol",
+        )
+        .any { text.contains(it) }
+  }
+
+  private fun startPatrolMode(question: String): Boolean {
+    appendChatMessage(ChatRole.USER, question)
+    if (_uiState.value.isPatrolModeEnabled) {
+      val alreadyRunning = "Patrol mode is already running."
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = alreadyRunning,
+            describeError = null,
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+      appendChatMessage(ChatRole.ASSISTANT, alreadyRunning)
+      speakText(alreadyRunning)
+      return true
+    }
+
+    patrolJob?.cancel()
+    lastPatrolAlertAtMs = 0L
+    lastPatrolAlertText = null
+    _uiState.update {
+      it.copy(
+          isPatrolModeEnabled = true,
+          isDescribeLoading = false,
+          describeResult = PATROL_START_MESSAGE,
+          describeError = null,
+          commandCenterStatus = null,
+          commandCenterError = null,
+      )
+    }
+    appendChatMessage(ChatRole.ASSISTANT, PATROL_START_MESSAGE)
+    speakText("Patrol mode started.")
+    patrolJob =
+        viewModelScope.launch {
+          while (_uiState.value.isPatrolModeEnabled) {
+            runCatching { performPatrolScan() }
+                .onFailure { Log.w(TAG, "Patrol scan failed", it) }
+            delay(PATROL_SCAN_INTERVAL_MS)
+          }
+        }
+    return true
+  }
+
+  private fun stopPatrolMode(question: String? = null): Boolean {
+    if (question != null) {
+      appendChatMessage(ChatRole.USER, question)
+    }
+    patrolJob?.cancel()
+    patrolJob = null
+    lastPatrolAlertAtMs = 0L
+    lastPatrolAlertText = null
+    val wasEnabled = _uiState.value.isPatrolModeEnabled
+    _uiState.update {
+      it.copy(
+          isPatrolModeEnabled = false,
+          isDescribeLoading = false,
+          describeResult = if (question != null || wasEnabled) PATROL_STOP_MESSAGE else it.describeResult,
+          describeError = null,
+          commandCenterStatus = null,
+          commandCenterError = null,
+      )
+    }
+    if (question != null || wasEnabled) {
+      appendChatMessage(ChatRole.ASSISTANT, PATROL_STOP_MESSAGE)
+      if (question != null) {
+        speakText("Patrol mode stopped.")
+      }
+    }
+    return wasEnabled || question != null
+  }
+
+  private suspend fun performPatrolScan() {
+    if (_uiState.value.isDescribeLoading || isSpeakingAnswer) {
+      return
+    }
+    val frame = _uiState.value.videoFrame ?: return
+    val patrolResult = queryPatrolForUnattendedItem(frame)
+    if (patrolResult == "CLEAR") {
+      return
+    }
+
+    val nowMs = System.currentTimeMillis()
+    if (patrolResult == lastPatrolAlertText && nowMs - lastPatrolAlertAtMs < PATROL_ALERT_COOLDOWN_MS) {
+      return
+    }
+
+    lastPatrolAlertText = patrolResult
+    lastPatrolAlertAtMs = nowMs
+    appendChatMessage(ChatRole.ASSISTANT, patrolResult)
+    _uiState.update {
+      it.copy(
+          describeResult = patrolResult,
+          describeError = null,
+      )
+    }
+    speakText(patrolResult)
+
+    var commandCenterStatus: String? = null
+    var commandCenterError: String? = null
+    runCatching {
+          sendToCommandCenter(
+              question = "Patrol auto-check for unattended items",
+              answer = patrolResult,
+              aiError = null,
+              frame = frame,
+          )
+        }
+        .onSuccess { commandCenterStatus = it }
+        .onFailure {
+          commandCenterError = it.message
+          Log.e(TAG, "Patrol command centre send failed", it)
+        }
+
+    _uiState.update {
+      it.copy(
+          commandCenterStatus = commandCenterStatus,
+          commandCenterError = commandCenterError,
+      )
+    }
+  }
+
+  private suspend fun queryPatrolForUnattendedItem(bitmap: Bitmap): String =
+      withContext(Dispatchers.IO) {
+        val patrolPrompt =
+            "Check only for unattended personal items. If you can see a bag, luggage, suitcase, backpack, purse, or wallet with no person beside it, holding it, or clearly attending to it, reply exactly as ALERT: Possible unattended item detected: <item>. <brief reason>. If no such item is visible, reply exactly CLEAR."
+        queryOpenAi(bitmap, patrolPrompt)
+            .trim()
+            .replace('\n', ' ')
+            .replace(Regex("\\s+"), " ")
+      }
 
   private fun appendChatMessage(role: ChatRole, text: String) {
     val normalized = text.trim()
@@ -1169,7 +1341,12 @@ class StreamViewModel(
             "aggressive",
             "suspicious",
             "intruder",
+            "unattended",
             "unattended bag",
+            "luggage",
+            "wallet",
+            "suitcase",
+            "backpack",
             "security",
         )
     ) {

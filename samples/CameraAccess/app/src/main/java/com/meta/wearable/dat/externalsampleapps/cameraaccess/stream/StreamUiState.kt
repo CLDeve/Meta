@@ -39,6 +39,7 @@ data class StreamUiState(
     val commandCenterError: String? = null,
     val isListening: Boolean = false,
     val isHandsFreeModeEnabled: Boolean = false,
+    val isPatrolModeEnabled: Boolean = false,
     val voiceHeardText: String? = null,
     val chatMessages: List<ChatMessage> = emptyList(),
 )

@@ -384,6 +384,7 @@ private fun StatusOverlay(
       !streamUiState.isDescribeLoading &&
           !streamUiState.isListening &&
           !streamUiState.isHandsFreeModeEnabled &&
+          !streamUiState.isPatrolModeEnabled &&
           streamUiState.describeResult.isNullOrEmpty() &&
           streamUiState.describeError.isNullOrEmpty() &&
           streamUiState.commandCenterStatus.isNullOrEmpty() &&
@@ -423,6 +424,14 @@ private fun StatusOverlay(
         Text(
             text = stringResource(id = R.string.hands_free_mode_active),
             color = Color(0xFFB9F6CA),
+            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
+        )
+      }
+
+      if (streamUiState.isPatrolModeEnabled) {
+        Text(
+            text = "Patrol mode active",
+            color = Color(0xFFFFE082),
             style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
         )
       }
