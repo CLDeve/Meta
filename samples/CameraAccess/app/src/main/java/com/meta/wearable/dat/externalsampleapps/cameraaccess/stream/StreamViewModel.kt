@@ -91,6 +91,7 @@ class StreamViewModel(
     FLIGHT_INFO,
     GATE_INFO,
     ORG_INFO,
+    MUSTERING_INFO,
   }
 
   private data class CommandCard(
@@ -283,6 +284,7 @@ class StreamViewModel(
                   AssistantIntent.FLIGHT_INFO -> answerFlightInfo(normalizedQuestion)
                   AssistantIntent.GATE_INFO -> answerGateInfo(normalizedQuestion)
                   AssistantIntent.ORG_INFO -> answerOrgInfo(normalizedQuestion)
+                  AssistantIntent.MUSTERING_INFO -> answerMusteringInfo(normalizedQuestion)
                   AssistantIntent.VISION -> queryOpenAi(checkNotNull(frame), normalizedQuestion)
                 }
               }
@@ -364,6 +366,31 @@ class StreamViewModel(
             .any { normalized.contains(it) }
     ) {
       return AssistantIntent.ORG_INFO
+    }
+    if (
+        listOf(
+                "mustering",
+                "safety hazard",
+                "apd rt",
+                "lost and found",
+                "efof",
+                "x-ray",
+                "xray",
+                "lag",
+                "100ml",
+                "mbs check",
+                "passenger permission",
+                "search procedure",
+                "lll",
+                "lock look leave",
+                "personal devices",
+                "active duty",
+                "ppe",
+                "ied",
+            )
+            .any { normalized.contains(it) }
+    ) {
+      return AssistantIntent.MUSTERING_INFO
     }
     if (FLIGHT_PATTERN.containsMatchIn(question) ||
         listOf("flight", "boarding", "departure", "arrival", "airline").any { normalized.contains(it) }) {
@@ -482,6 +509,36 @@ class StreamViewModel(
           "Your VP is Alvin Lim."
       else ->
           "Your VP is Alvin Lim, and your Head Ops is Jeremin."
+    }
+  }
+
+  private fun answerMusteringInfo(question: String): String {
+    val normalized = question.lowercase(Locale.ROOT)
+    return when {
+      normalized.contains("safety hazard") ->
+          "Today's mustering says officers must look out for any safety hazards and report them immediately."
+      normalized.contains("apd rt") || normalized.contains("rt modules") ->
+          "Today's mustering includes sharing of APD RT modules operandi, including recent pass and failure RT."
+      normalized.contains("airport facilities") ->
+          "Today's reminder is that airport facilities are meant for passengers."
+      normalized.contains("lost and found") ->
+          "Today's mustering includes a reminder on lost and found procedure and directive."
+      normalized.contains("efof") ->
+          "Today's mustering says to submit all EFOF for all flights."
+      normalized.contains("lag") || normalized.contains("100ml") || normalized.contains("mbs check") ->
+          "Today's mustering says X-ray operators must not assume LAG or bottles less than 100ml are safe. Refer every LAG detected for MBS check."
+      normalized.contains("passenger permission") || normalized.contains("conducting search") || normalized.contains("search procedure") ->
+          "Today's mustering says officers must seek passenger permission before conducting a search."
+      normalized.contains("lll") || normalized.contains("lock look leave") ->
+          "Today's mustering says to practise the LLL steps: Lock, Look, Leave."
+      normalized.contains("personal devices") || normalized.contains("active duty") || normalized.contains("official call") ->
+          "Today's mustering says there is strictly no use of personal devices during active duty. If an official call must be answered, the officer must stop all activities, remain stationary, and finish the call before continuing with duty."
+      normalized.contains("ppe") ->
+          "Today's mustering says to strictly adhere to PPE requirements and ensure PPE is in good condition."
+      normalized.contains("ied") || normalized.contains("organic mass") || normalized.contains("x-ray") || normalized.contains("xray") ->
+          "Today's mustering says X-ray operators must look for other possible IED components, not just organic mass. Stop and refer if unsure."
+      else ->
+          "Today's PBSU T3 PM shift mustering covers safety hazards, APD RT sharing, lost and found, EFOF submission, LAG and MBS referral, passenger permission before search, LLL steps, no personal device use during active duty, PPE compliance, and IED awareness for X-ray operators."
     }
   }
 
