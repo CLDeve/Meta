@@ -71,6 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,7 +101,9 @@ class StreamViewModel(
     private const val AI_REQUEST_JPEG_QUALITY = 60
     private const val AI_READ_TIMEOUT_MS = 45_000
     private const val STREAM_FPS = 15
-    private const val PREVIEW_JPEG_QUALITY = 85
+    private const val PREVIEW_JPEG_QUALITY = 70
+    private const val PREVIEW_MAX_FPS = 8L
+    private const val PREVIEW_MIN_FRAME_INTERVAL_MS = 1000L / PREVIEW_MAX_FPS
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
     private const val HANDS_FREE_STOP_MESSAGE = "Hands-free mode stopped."
@@ -125,6 +128,7 @@ class StreamViewModel(
   private var videoJob: Job? = null
   private var stateJob: Job? = null
   private var timerJob: Job? = null
+  private var lastPreviewFrameAtMs: Long = 0L
   private var speechRecognizer: SpeechRecognizer? = null
   private var latestVoiceContext: Context? = null
   private var audioManager: AudioManager? = null
@@ -172,10 +176,13 @@ class StreamViewModel(
         Wearables.startStreamSession(
                 getApplication(),
                 deviceSelector,
-                StreamConfiguration(videoQuality = VideoQuality.HIGH, STREAM_FPS),
+                StreamConfiguration(videoQuality = VideoQuality.MEDIUM, STREAM_FPS),
             )
             .also { streamSession = it }
-    videoJob = viewModelScope.launch { streamSession.videoStream.collect { handleVideoFrame(it) } }
+    videoJob =
+        viewModelScope.launch(Dispatchers.Default) {
+          streamSession.videoStream.conflate().collect { handleVideoFrame(it) }
+        }
     stateJob =
         viewModelScope.launch {
           streamSession.state.collect { currentState ->
@@ -199,6 +206,7 @@ class StreamViewModel(
     stopVoiceDescribe(disableHandsFreeMode = true)
     streamSession?.close()
     streamSession = null
+    lastPreviewFrameAtMs = 0L
     streamTimer.stopTimer()
     _uiState.update { INITIAL_STATE }
   }
@@ -1027,6 +1035,12 @@ class StreamViewModel(
   }
 
   private fun handleVideoFrame(videoFrame: VideoFrame) {
+    val nowMs = System.currentTimeMillis()
+    if (nowMs - lastPreviewFrameAtMs < PREVIEW_MIN_FRAME_INTERVAL_MS) {
+      return
+    }
+    lastPreviewFrameAtMs = nowMs
+
     // VideoFrame contains raw I420 video data in a ByteBuffer
     val buffer = videoFrame.buffer
     val dataSize = buffer.remaining()
