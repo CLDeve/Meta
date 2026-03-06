@@ -24,6 +24,7 @@ from urllib.request import Request, urlopen
 LOCK = threading.Lock()
 FLIGHTS_API_URL = "https://api.cas.certispsb.net/api-ext/v1/flights/departure/list"
 CHANGI_DEPARTURES_URL = "https://www.changiairport.com/en/fly/flight-information/departures.html"
+CHANGI_SEARCH_URL = "https://www.changiairport.com/en/search.html"
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
 OPENSKY_TOKEN_URL = (
     "https://auth.opensky-network.org/auth/realms/opensky-network/"
@@ -361,8 +362,9 @@ def resolve_flight_question(flight_no: str) -> tuple[int, dict[str, Any]]:
         "ok": True,
         "found": False,
         "source": "cag-only-fallback",
-        "message": f"I could not confirm {normalized_flight} from backend flight data. Check the official Changi departures listing.",
-        "cagUrl": CHANGI_DEPARTURES_URL,
+        "message": f"I could not confirm {normalized_flight} from backend flight data. Check the official CAG search results for this flight number.",
+        "cagUrl": f"{CHANGI_SEARCH_URL}?q={normalized_flight}",
+        "cagDeparturesUrl": CHANGI_DEPARTURES_URL,
         "flightNo": normalized_flight,
     }
 
