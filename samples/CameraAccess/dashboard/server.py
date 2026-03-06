@@ -66,6 +66,31 @@ OPENSKY_TIMEOUT_SECONDS = _read_int_env("OPENSKY_TIMEOUT_SECONDS", 15)
 OPENSKY_POLL_ANON_MS = _read_int_env("OPENSKY_POLL_ANON_MS", 240_000)
 OPENSKY_POLL_AUTH_MS = _read_int_env("OPENSKY_POLL_AUTH_MS", 30_000)
 
+IATA_DESTINATIONS = {
+    "AMS": "Amsterdam",
+    "BKK": "Bangkok",
+    "CAN": "Guangzhou",
+    "CGK": "Jakarta",
+    "DEL": "Delhi",
+    "DPS": "Denpasar Bali",
+    "DXB": "Dubai",
+    "FRA": "Frankfurt",
+    "HKG": "Hong Kong",
+    "ICN": "Seoul Incheon",
+    "KIX": "Osaka Kansai",
+    "KUL": "Kuala Lumpur",
+    "LHR": "London Heathrow",
+    "MNL": "Manila",
+    "NRT": "Tokyo Narita",
+    "PEN": "Penang",
+    "PVG": "Shanghai Pudong",
+    "SGN": "Ho Chi Minh City",
+    "SIN": "Singapore",
+    "SUB": "Surabaya",
+    "SYD": "Sydney",
+    "TPE": "Taipei",
+}
+
 
 def _events_db_path() -> Path:
     raw = os.getenv("EVENTS_DB_PATH", "").strip()
@@ -311,11 +336,25 @@ def _pick_flexible(row: dict[str, Any], keys: list[str], patterns: list[re.Patte
     return ""
 
 
+def _expand_destination(value: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return raw
+    upper = raw.upper()
+    if upper in IATA_DESTINATIONS:
+        return IATA_DESTINATIONS[upper]
+    if re.fullmatch(r"[A-Z]{3}", upper):
+        return raw
+    return raw
+
+
 def _normalize_flight_row(row: dict[str, Any]) -> dict[str, Any]:
+    destination_raw = _pick_flexible(row, ["destination", "dest", "to"], [re.compile(r"dest", re.I), re.compile(r"to", re.I)])
     return {
         "flightNo": _pick_flexible(row, ["flightNo", "flightno", "flight_no", "flight"], [re.compile(r"flight.*no", re.I), re.compile(r"^flight$", re.I)]),
         "airline": _pick_flexible(row, ["airlineName", "airline", "carrierName", "carrier"], [re.compile(r"airline", re.I), re.compile(r"carrier", re.I)]),
-        "destination": _pick_flexible(row, ["destination", "dest", "to"], [re.compile(r"dest", re.I), re.compile(r"to", re.I)]),
+        "destination": _expand_destination(destination_raw),
+        "destinationCode": destination_raw,
         "timing": _pick_flexible(row, ["timing", "scheduledTime", "scheduled", "estimatedTime"], [re.compile(r"time", re.I)]),
         "gate": _pick_flexible(row, ["terminalGate", "terminal_gate", "terminal", "gate"], [re.compile(r"terminal", re.I), re.compile(r"gate", re.I)]),
         "status": _pick_flexible(row, ["status", "flightStatus", "remark"], [re.compile(r"status", re.I), re.compile(r"remark", re.I)]),
