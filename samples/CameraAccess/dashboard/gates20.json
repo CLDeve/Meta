@@ -10,7 +10,7 @@
       "scheduledTime": "1100",
       "estimatedTime": "1100",
       "targetedOffblockTime": "1055",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T03:18:14.000Z"
     },
     {
@@ -20,7 +20,7 @@
       "scheduledTime": "1140",
       "estimatedTime": "1140",
       "targetedOffblockTime": "1140",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T03:57:46.000Z"
     },
     {
@@ -30,7 +30,7 @@
       "scheduledTime": "1255",
       "estimatedTime": "1255",
       "targetedOffblockTime": "1255",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T05:17:22.000Z"
     },
     {
@@ -40,7 +40,7 @@
       "scheduledTime": "1310",
       "estimatedTime": "1310",
       "targetedOffblockTime": "1310",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T05:27:58.000Z"
     },
     {
@@ -50,7 +50,7 @@
       "scheduledTime": "1355",
       "estimatedTime": "1355",
       "targetedOffblockTime": "1355",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:55:03.000Z"
     },
     {
@@ -60,7 +60,7 @@
       "scheduledTime": "1130",
       "estimatedTime": "1300",
       "targetedOffblockTime": "1300",
-      "status": "New Gate",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:21:47.000Z"
     },
     {
@@ -70,7 +70,7 @@
       "scheduledTime": "1240",
       "estimatedTime": "1240",
       "targetedOffblockTime": "1240",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:57:19.000Z"
     },
     {
@@ -80,7 +80,7 @@
       "scheduledTime": "1920",
       "estimatedTime": "1920",
       "targetedOffblockTime": "1920",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:24:50.000Z"
     },
     {
@@ -90,7 +90,7 @@
       "scheduledTime": "1400",
       "estimatedTime": "1400",
       "targetedOffblockTime": "1400",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T05:00:03.000Z"
     },
     {
@@ -100,7 +100,7 @@
       "scheduledTime": "1315",
       "estimatedTime": "1315",
       "targetedOffblockTime": "1305",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T05:23:06.000Z"
     },
     {
@@ -110,7 +110,7 @@
       "scheduledTime": "1245",
       "estimatedTime": "1245",
       "targetedOffblockTime": "1245",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T05:00:50.000Z"
     },
     {
@@ -120,7 +120,7 @@
       "scheduledTime": "0845",
       "estimatedTime": "0845",
       "targetedOffblockTime": "0845",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T01:02:09.000Z"
     },
     {
@@ -130,7 +130,7 @@
       "scheduledTime": "1825",
       "estimatedTime": "1825",
       "targetedOffblockTime": "1825",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T03:29:50.000Z"
     },
     {
@@ -140,7 +140,7 @@
       "scheduledTime": "1955",
       "estimatedTime": "1955",
       "targetedOffblockTime": "1955",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:59:56.000Z"
     },
     {
@@ -160,7 +160,7 @@
       "scheduledTime": "1845",
       "estimatedTime": "1845",
       "targetedOffblockTime": "1845",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T03:49:59.000Z"
     },
     {
@@ -170,7 +170,7 @@
       "scheduledTime": "1955",
       "estimatedTime": "1955",
       "targetedOffblockTime": "1955",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:59:50.000Z"
     },
     {
@@ -180,7 +180,7 @@
       "scheduledTime": "1900",
       "estimatedTime": "1900",
       "targetedOffblockTime": "1900",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:04:57.000Z"
     },
     {
@@ -190,7 +190,7 @@
       "scheduledTime": "1300",
       "estimatedTime": "1300",
       "targetedOffblockTime": "1248",
-      "status": "Departed",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T05:13:05.000Z"
     },
     {
@@ -200,7 +200,7 @@
       "scheduledTime": "1950",
       "estimatedTime": "1950",
       "targetedOffblockTime": "1950",
-      "status": "Scheduled",
+      "status": "Gate Open",
       "messageTimestamp": "2026-03-06T04:54:49.000Z"
     }
   ]
