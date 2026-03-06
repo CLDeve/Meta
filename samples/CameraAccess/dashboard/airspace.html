@@ -212,15 +212,15 @@
     }
 
     .plane-marker {
-      width: 18px;
-      height: 18px;
+      width: 30px;
+      height: 30px;
       transform-origin: center;
-      filter: drop-shadow(0 0 8px rgba(97, 215, 255, 0.4));
+      filter: drop-shadow(0 0 14px rgba(255, 215, 64, 0.75));
     }
 
     .plane-marker svg {
-      width: 18px;
-      height: 18px;
+      width: 30px;
+      height: 30px;
       display: block;
     }
 
@@ -350,18 +350,18 @@
 
     function planeIcon(track, onGround) {
       const heading = Number.isFinite(track) ? track : 0;
-      const color = onGround ? "#ffbf74" : "#67ffc7";
+      const color = onGround ? "#ff8b5e" : "#ffd84d";
       return L.divIcon({
         className: "",
         html: `
           <div class="plane-marker" style="transform: rotate(${heading}deg);">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="${color}" d="M12 1l2.5 7.3 7.5 2.7-7.5 2.7L12 23l-2.5-9.3L2 11l7.5-2.7L12 1z"/>
+              <path fill="${color}" stroke="#102033" stroke-width="1.1" d="M12 1l2.5 7.3 7.5 2.7-7.5 2.7L12 23l-2.5-9.3L2 11l7.5-2.7L12 1z"/>
             </svg>
           </div>
         `,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
       });
     }
 
@@ -395,14 +395,39 @@
           : lat;
     }
 
+    function distanceToSingapore(lat, lon) {
+      const dx = lat - SIN_CENTER[0];
+      const dy = lon - SIN_CENTER[1];
+      return Math.sqrt((dx * dx) + (dy * dy));
+    }
+
+    function isInboundFlight(state) {
+      const lat = Number(state?.latitude);
+      const lon = Number(state?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return false;
+      }
+      const track = Number(state?.trueTrack);
+      if (!Number.isFinite(track)) {
+        return distanceToSingapore(lat, lon) < 0.28;
+      }
+      const heading = ((track % 360) + 360) % 360;
+      const dx = SIN_CENTER[0] - lat;
+      const dy = SIN_CENTER[1] - lon;
+      const bearingToSin = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+      let delta = Math.abs(heading - bearingToSin);
+      if (delta > 180) delta = 360 - delta;
+      return distanceToSingapore(lat, lon) < 0.36 && delta <= 75;
+    }
+
     function buildSimulatedFlights() {
       return [
-        { callsign: "SQ318", originCountry: "Singapore", latitude: 1.18, longitude: 103.61, trueTrack: 62, velocity: 215, baroAltitude: 2300, onGround: false },
-        { callsign: "TR512", originCountry: "Singapore", latitude: 1.49, longitude: 103.71, trueTrack: 148, velocity: 205, baroAltitude: 1850, onGround: false },
-        { callsign: "MH602", originCountry: "Malaysia", latitude: 1.31, longitude: 103.48, trueTrack: 88, velocity: 228, baroAltitude: 2900, onGround: false },
-        { callsign: "QZ507", originCountry: "Indonesia", latitude: 1.45, longitude: 104.03, trueTrack: 232, velocity: 212, baroAltitude: 2500, onGround: false },
-        { callsign: "AK719", originCountry: "Malaysia", latitude: 1.23, longitude: 104.10, trueTrack: 301, velocity: 220, baroAltitude: 3400, onGround: false },
-        { callsign: "CX734", originCountry: "Hong Kong", latitude: 1.38, longitude: 103.85, trueTrack: 14, velocity: 190, baroAltitude: 1400, onGround: false },
+        { callsign: "SQ318", originCountry: "Singapore", latitude: 1.18, longitude: 103.58, trueTrack: 34, velocity: 215, baroAltitude: 2300, onGround: false },
+        { callsign: "TR512", originCountry: "Singapore", latitude: 1.47, longitude: 103.66, trueTrack: 158, velocity: 205, baroAltitude: 1850, onGround: false },
+        { callsign: "MH602", originCountry: "Malaysia", latitude: 1.32, longitude: 103.50, trueTrack: 79, velocity: 228, baroAltitude: 2900, onGround: false },
+        { callsign: "QZ507", originCountry: "Indonesia", latitude: 1.46, longitude: 104.05, trueTrack: 244, velocity: 212, baroAltitude: 2500, onGround: false },
+        { callsign: "AK719", originCountry: "Malaysia", latitude: 1.23, longitude: 104.08, trueTrack: 306, velocity: 220, baroAltitude: 3400, onGround: false },
+        { callsign: "CX734", originCountry: "Hong Kong", latitude: 1.42, longitude: 103.93, trueTrack: 204, velocity: 190, baroAltitude: 1400, onGround: false },
       ];
     }
 
@@ -456,9 +481,9 @@
     }
 
     function renderList(states) {
-      const items = Array.isArray(states) ? states.slice(0, 25) : [];
+      const items = Array.isArray(states) ? states.filter(isInboundFlight).slice(0, 25) : [];
       if (!items.length) {
-        flightList.innerHTML = "<li>No flights in the current map window.</li>";
+        flightList.innerHTML = "<li>No inbound flights detected in the current map window.</li>";
         return;
       }
       flightList.innerHTML = items.map((state) => {
@@ -478,7 +503,8 @@
 
     function renderFlights(states) {
       flightsLayer.clearLayers();
-      for (const state of Array.isArray(states) ? states : []) {
+      const items = Array.isArray(states) ? states.filter(isInboundFlight) : [];
+      for (const state of items) {
         const lat = Number(state?.latitude);
         const lon = Number(state?.longitude);
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
@@ -523,12 +549,12 @@
           nextPollMs = pollFromApi;
         }
         stopSimulation();
-        countEl.textContent = String(payload.count || 0);
+        const states = (payload.states || []).filter(isInboundFlight);
+        countEl.textContent = String(states.length);
         modeEl.textContent = String(payload.authMode || "anonymous");
         pollEl.textContent = `${Math.round(nextPollMs / 1000)}s`;
         rateEl.textContent = payload.rateLimitRemaining ?? "-";
         updatedEl.textContent = new Date(payload.fetchedAtEpochMs || Date.now()).toLocaleTimeString();
-        const states = payload.states || [];
         renderFlights(states);
         renderList(states);
         setConnection(true);
