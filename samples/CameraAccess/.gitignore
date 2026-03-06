@@ -9,3 +9,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+.idea/
+.DS_Store
+0
+dashboard/__pycache__/
+dashboard/events.db
