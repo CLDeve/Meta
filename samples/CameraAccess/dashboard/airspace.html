@@ -307,6 +307,9 @@
     const rateEl = document.getElementById("rate");
     const updatedEl = document.getElementById("updated");
     const flightList = document.getElementById("flightList");
+    const SIM_UPDATE_MS = 1200;
+    let simTimer = null;
+    let simulatedFlights = [];
 
     const map = L.map("map", {
       zoomControl: true,
@@ -370,6 +373,86 @@
     function fmtSpeed(ms) {
       if (!Number.isFinite(ms)) return "n/a";
       return `${Math.round(ms * 1.94384)} kt`;
+    }
+
+    function randBetween(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function normalizeLon(lon) {
+      return lon < OPEN_SKY_BBOX.lomin
+        ? OPEN_SKY_BBOX.lomax
+        : lon > OPEN_SKY_BBOX.lomax
+          ? OPEN_SKY_BBOX.lomin
+          : lon;
+    }
+
+    function normalizeLat(lat) {
+      return lat < OPEN_SKY_BBOX.lamin
+        ? OPEN_SKY_BBOX.lamax
+        : lat > OPEN_SKY_BBOX.lamax
+          ? OPEN_SKY_BBOX.lamin
+          : lat;
+    }
+
+    function buildSimulatedFlights() {
+      return [
+        { callsign: "SQ318", originCountry: "Singapore", latitude: 1.18, longitude: 103.61, trueTrack: 62, velocity: 215, baroAltitude: 2300, onGround: false },
+        { callsign: "TR512", originCountry: "Singapore", latitude: 1.49, longitude: 103.71, trueTrack: 148, velocity: 205, baroAltitude: 1850, onGround: false },
+        { callsign: "MH602", originCountry: "Malaysia", latitude: 1.31, longitude: 103.48, trueTrack: 88, velocity: 228, baroAltitude: 2900, onGround: false },
+        { callsign: "QZ507", originCountry: "Indonesia", latitude: 1.45, longitude: 104.03, trueTrack: 232, velocity: 212, baroAltitude: 2500, onGround: false },
+        { callsign: "AK719", originCountry: "Malaysia", latitude: 1.23, longitude: 104.10, trueTrack: 301, velocity: 220, baroAltitude: 3400, onGround: false },
+        { callsign: "CX734", originCountry: "Hong Kong", latitude: 1.38, longitude: 103.85, trueTrack: 14, velocity: 190, baroAltitude: 1400, onGround: false },
+      ];
+    }
+
+    function tickSimulation() {
+      simulatedFlights = simulatedFlights.map((flight) => {
+        const heading = (Number(flight.trueTrack) || 0) * (Math.PI / 180);
+        const latStep = Math.cos(heading) * 0.012 + randBetween(-0.0015, 0.0015);
+        const lonStep = Math.sin(heading) * 0.016 + randBetween(-0.0015, 0.0015);
+        return {
+          ...flight,
+          latitude: normalizeLat(flight.latitude + latStep),
+          longitude: normalizeLon(flight.longitude + lonStep),
+          trueTrack: (Number(flight.trueTrack) + randBetween(-8, 8) + 360) % 360,
+          baroAltitude: Math.max(900, Number(flight.baroAltitude) + randBetween(-140, 140)),
+          velocity: Math.max(150, Number(flight.velocity) + randBetween(-10, 10)),
+        };
+      });
+      renderFlights(simulatedFlights);
+      renderList(simulatedFlights);
+      countEl.textContent = String(simulatedFlights.length);
+      updatedEl.textContent = new Date().toLocaleTimeString();
+    }
+
+    function startSimulation(reason) {
+      if (!simulatedFlights.length) {
+        simulatedFlights = buildSimulatedFlights();
+      }
+      modeEl.textContent = "simulated";
+      pollEl.textContent = `${Math.round(SIM_UPDATE_MS / 1000)}s`;
+      rateEl.textContent = "-";
+      setConnection(true);
+      tickSimulation();
+      const firstItem = flightList.querySelector("li");
+      if (firstItem && firstItem.classList.contains("warn")) {
+        firstItem.remove();
+      }
+      if (simTimer == null) {
+        simTimer = window.setInterval(tickSimulation, SIM_UPDATE_MS);
+      }
+      flightList.insertAdjacentHTML(
+        "afterbegin",
+        `<li class="warn">${escapeHtml(reason)}</li>`
+      );
+    }
+
+    function stopSimulation() {
+      if (simTimer != null) {
+        window.clearInterval(simTimer);
+        simTimer = null;
+      }
     }
 
     function renderList(states) {
@@ -439,19 +522,21 @@
         if (Number.isFinite(pollFromApi) && pollFromApi > 0) {
           nextPollMs = pollFromApi;
         }
+        stopSimulation();
         countEl.textContent = String(payload.count || 0);
         modeEl.textContent = String(payload.authMode || "anonymous");
         pollEl.textContent = `${Math.round(nextPollMs / 1000)}s`;
         rateEl.textContent = payload.rateLimitRemaining ?? "-";
         updatedEl.textContent = new Date(payload.fetchedAtEpochMs || Date.now()).toLocaleTimeString();
-        renderFlights(payload.states || []);
-        renderList(payload.states || []);
+        const states = payload.states || [];
+        renderFlights(states);
+        renderList(states);
         setConnection(true);
+        if (!states.length) {
+          startSimulation("No live flights returned. Showing simulated traffic.");
+        }
       } catch (error) {
-        setConnection(false);
-        modeEl.textContent = "offline";
-        renderFlights([]);
-        flightList.innerHTML = `<li class="danger">Failed to load flights: ${escapeHtml(error instanceof Error ? error.message : "unknown error")}</li>`;
+        startSimulation(`Live OpenSky unavailable. Showing simulated traffic. ${error instanceof Error ? error.message : "unknown error"}`);
       } finally {
         window.setTimeout(pollFlights, nextPollMs);
       }
