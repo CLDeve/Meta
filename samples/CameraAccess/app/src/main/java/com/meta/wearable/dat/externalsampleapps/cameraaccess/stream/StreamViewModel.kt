@@ -85,6 +85,11 @@ class StreamViewModel(
     private val wearablesViewModel: WearablesViewModel,
 ) : AndroidViewModel(application) {
 
+  private enum class AssistantIntent {
+    VISION,
+    AIRPORT_INFO,
+  }
+
   private data class CommandCard(
       val intent: String,
       val title: String,
@@ -113,6 +118,7 @@ class StreamViewModel(
     private const val QA_EVENT_TYPE = "qa"
     private const val MAX_CHAT_MESSAGES = 24
     private const val CIOC_PHONE_NUMBER = "91002365"
+    private val TERMINAL_PATTERN = Regex("\\bT([1-4])\\b", RegexOption.IGNORE_CASE)
     private val INITIAL_STATE = StreamUiState()
   }
 
@@ -237,8 +243,9 @@ class StreamViewModel(
       return
     }
     appendChatMessage(ChatRole.USER, normalizedQuestion)
+    val intent = routeQuestion(normalizedQuestion)
     val frame = _uiState.value.videoFrame
-    if (frame == null) {
+    if (intent == AssistantIntent.VISION && frame == null) {
       val noFrameError = "No frame available yet"
       _uiState.update {
         it.copy(
@@ -265,7 +272,12 @@ class StreamViewModel(
       }
 
       val result =
-          runCatching { queryOpenAi(frame, normalizedQuestion) }
+          runCatching {
+                when (intent) {
+                  AssistantIntent.AIRPORT_INFO -> answerAirportInfo(normalizedQuestion)
+                  AssistantIntent.VISION -> queryOpenAi(checkNotNull(frame), normalizedQuestion)
+                }
+              }
               .onFailure { Log.e(TAG, "OpenAI describe failed", it) }
 
       val describeResult = result.getOrNull()
@@ -303,6 +315,65 @@ class StreamViewModel(
         restartHandsFreeListening()
       }
     }
+  }
+
+  private fun routeQuestion(question: String): AssistantIntent {
+    val normalized = question.lowercase(Locale.ROOT)
+    val isAirportInfoQuestion =
+        listOf(
+                "skytrain",
+                "shuttle bus",
+                "transfer",
+                "transit",
+                "terminal",
+                "how do i go",
+                "how to go",
+                "how do i get",
+                "how to get",
+                "where is t1",
+                "where is t2",
+                "where is t3",
+                "where is t4",
+            )
+            .any { normalized.contains(it) } ||
+            TERMINAL_PATTERN.containsMatchIn(question)
+    return if (isAirportInfoQuestion) AssistantIntent.AIRPORT_INFO else AssistantIntent.VISION
+  }
+
+  private fun answerAirportInfo(question: String): String {
+    val normalized = question.lowercase(Locale.ROOT)
+    val terminals = TERMINAL_PATTERN.findAll(question).mapNotNull { it.groupValues.getOrNull(1) }.toList()
+    val fromTerminal = terminals.getOrNull(0)
+    val toTerminal = terminals.getOrNull(1)
+
+    if ((fromTerminal == "1" && toTerminal == "4") || (fromTerminal == "4" && toTerminal == "1")) {
+      return "Use the shuttle bus between Terminal 1 and Terminal 4. In transit, the bus departs from T1 Gate C21 and runs 24 hours daily."
+    }
+    if ((fromTerminal == "3" && toTerminal == "4") || (fromTerminal == "4" && toTerminal == "3")) {
+      return "Use the shuttle bus between Terminal 3 and Terminal 4. In transit, the bus departs from T3 Immigration Hall A and runs 24 hours daily."
+    }
+    if ((fromTerminal == "2" && toTerminal == "4") || (fromTerminal == "4" && toTerminal == "2")) {
+      return "Terminal 4 is reached by shuttle bus, not Skytrain. Go via the T1 or T3 transit shuttle bus connection. The T1, T2 and T3 side connects to T4 by bus 24 hours daily."
+    }
+    if ((fromTerminal == "1" && toTerminal == "2") || (fromTerminal == "2" && toTerminal == "1")) {
+      return "For Terminal 1 to Terminal 2 in transit, use the Skytrain between transfer zones D and E. It operates daily from 0430 to 0130."
+    }
+    if ((fromTerminal == "1" && toTerminal == "3") || (fromTerminal == "3" && toTerminal == "1")) {
+      return "For Terminal 1 to Terminal 3 in transit, use the Skytrain between transfer zones C and B. It operates daily from 0430 to 0130."
+    }
+    if ((fromTerminal == "2" && toTerminal == "3") || (fromTerminal == "3" && toTerminal == "2")) {
+      return "For Terminal 2 to Terminal 3 in transit, you can use Skytrain between transfer zones E and B from 0430 to 0130 daily, or between F and A from 0500 to 0200 daily."
+    }
+    if (normalized.contains("t4") && (normalized.contains("bus") || normalized.contains("shuttle"))) {
+      return "Terminal 4 is connected to the other terminals by shuttle bus in the transit area. The bus departs from T1 Gate C21 and T3 Immigration Hall A, and it runs 24 hours daily."
+    }
+    if (normalized.contains("skytrain")) {
+      return "Within the transit area, Terminals 1, 2 and 3 are connected by Skytrain. T1 to T2 uses D to E, T1 to T3 uses C to B, and T2 to T3 uses E to B or F to A depending on the link."
+    }
+    if (normalized.contains("transfer") || normalized.contains("transit")) {
+      return "In transit, Terminals 1, 2 and 3 connect by Skytrain, while Terminal 4 connects by shuttle bus. Tell me your from and to terminals, for example T3 to T4, and I can give the exact transfer route."
+    }
+    return "I can answer terminal transfer questions without using the camera. Ask me things like how to go from T1 to T4, where the Skytrain link is, or how to transfer between terminals in transit."
   }
 
   private fun handleLocalPhoneCommand(question: String): Boolean {
