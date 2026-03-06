@@ -400,6 +400,15 @@ def fetch_opensky_states(
         payload["cache"] = {"hit": True, "stale": False}
         return HTTPStatus.OK, payload
 
+    def stale_opensky_payload(message: str) -> tuple[int, dict[str, Any]] | None:
+        stale_payload, stale = _cache_get(OPENSKY_CACHE, cache_key, allow_stale=True)
+        if stale_payload is None or not stale:
+            return None
+        payload = dict(stale_payload)
+        payload["cache"] = {"hit": True, "stale": True}
+        payload["warning"] = message
+        return HTTPStatus.OK, payload
+
     params = {
         "lamin": f"{min_lat:.4f}",
         "lomin": f"{min_lon:.4f}",
@@ -441,6 +450,9 @@ def fetch_opensky_states(
                 warning = "OpenSky OAuth rejected. Fell back to anonymous mode."
             except HTTPError as fallback_err:
                 fallback_body = fallback_err.read().decode("utf-8", errors="replace")
+                stale_result = stale_opensky_payload("OpenSky is unavailable. Showing cached airspace data.")
+                if stale_result is not None:
+                    return stale_result
                 return fallback_err.code, {
                     "ok": False,
                     "error": "OpenSky request failed",
@@ -448,11 +460,17 @@ def fetch_opensky_states(
                     "body": fallback_body,
                 }
             except URLError as fallback_err:
+                stale_result = stale_opensky_payload("OpenSky timed out. Showing cached airspace data.")
+                if stale_result is not None:
+                    return stale_result
                 return HTTPStatus.BAD_GATEWAY, {
                     "ok": False,
                     "error": f"OpenSky connection failed: {fallback_err.reason}",
                 }
         else:
+            stale_result = stale_opensky_payload("OpenSky request failed. Showing cached airspace data.")
+            if stale_result is not None:
+                return stale_result
             return err.code, {
                 "ok": False,
                 "error": "OpenSky request failed",
@@ -460,17 +478,26 @@ def fetch_opensky_states(
                 "body": body,
             }
     except URLError as err:
+        stale_result = stale_opensky_payload("OpenSky timed out. Showing cached airspace data.")
+        if stale_result is not None:
+            return stale_result
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"OpenSky connection failed: {err.reason}"}
 
     try:
         root = json.loads(body)
     except json.JSONDecodeError:
+        stale_result = stale_opensky_payload("OpenSky returned invalid data. Showing cached airspace data.")
+        if stale_result is not None:
+            return stale_result
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "OpenSky returned non-JSON payload"}
 
     raw_states = root.get("states")
     if raw_states is None:
         raw_states = []
     if not isinstance(raw_states, list):
+        stale_result = stale_opensky_payload("OpenSky returned invalid state data. Showing cached airspace data.")
+        if stale_result is not None:
+            return stale_result
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "OpenSky payload missing states list"}
 
     parsed_states: list[dict[str, Any]] = []
