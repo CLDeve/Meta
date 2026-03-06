@@ -88,12 +88,6 @@
       display: inline-block;
     }
 
-    button.pill {
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
-    }
-
     .dot {
       width: 10px;
       height: 10px;
@@ -224,8 +218,6 @@
         <p class="subtitle">Live events from glasses-assisted questioning</p>
       </div>
       <div class="panel status-row">
-        <button class="pill" id="pttBtn" type="button">PTT App</button>
-        <a class="pill link" href="/worldview">Worldview</a>
         <a class="pill link" href="/flights">Flights Page</a>
         <div class="pill"><span id="liveDot" class="dot"></span><strong id="connState">connecting</strong></div>
         <div class="pill">events: <strong id="eventCount">0</strong></div>
@@ -244,7 +236,6 @@
     const liveDot = document.getElementById("liveDot");
     const eventCount = document.getElementById("eventCount");
     const lastIdEl = document.getElementById("lastId");
-    const pttBtn = document.getElementById("pttBtn");
 
     const MAX_VISIBLE_CARDS = 100;
     let latestId = 0;
@@ -253,30 +244,6 @@
     function setConnection(ok, text) {
       connState.textContent = text;
       liveDot.classList.toggle("ok", ok);
-    }
-
-    if (pttBtn) {
-      pttBtn.addEventListener("click", async () => {
-        const oldText = pttBtn.textContent;
-        pttBtn.disabled = true;
-        pttBtn.textContent = "PTT...";
-        try {
-          const resp = await fetch("/api/ptt", { method: "POST" });
-          const payload = await resp.json().catch(() => ({}));
-          if (!resp.ok || !payload.ok) {
-            const errText = payload.error || `HTTP ${resp.status}`;
-            throw new Error(errText);
-          }
-          setConnection(true, "ptt sent");
-        } catch (error) {
-          const errText = error instanceof Error ? error.message : "PTT failed";
-          setConnection(false, "ptt failed");
-          window.alert(`PTT failed: ${errText}`);
-        } finally {
-          pttBtn.disabled = false;
-          pttBtn.textContent = oldText;
-        }
-      });
     }
 
     function cardFor(event) {
