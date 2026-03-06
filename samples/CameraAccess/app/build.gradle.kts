@@ -28,10 +28,14 @@ android {
     versionName = "1.0"
     val localProperties =
         Properties().apply {
-          val localPropertiesFile = rootProject.file("local.properties")
-          if (localPropertiesFile.isFile) {
-            localPropertiesFile.inputStream().use(::load)
-          }
+          generateSequence(project.projectDir) { current -> current.parentFile }
+              .map { directory -> directory.resolve("local.properties") }
+              .filter { candidate -> candidate.isFile }
+              .toList()
+              .asReversed()
+              .forEach { localPropertiesFile ->
+                localPropertiesFile.inputStream().use(::load)
+              }
         }
 
     fun configValue(name: String, defaultValue: String = ""): String {
