@@ -14,6 +14,7 @@
       --muted: #9fb4d1;
       --accent: #5fb2ff;
       --ok: #4df0b5;
+      --error: #ff8f9b;
     }
 
     * { box-sizing: border-box; }
@@ -119,6 +120,22 @@
       padding: 4px 8px;
     }
 
+    .status.error {
+      border-color: rgba(255, 143, 155, 0.45);
+      color: var(--error);
+    }
+
+    .error {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 143, 155, 0.3);
+      background: rgba(115, 24, 40, 0.28);
+      color: #ffd6db;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     .empty {
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -189,12 +206,14 @@
             ? `<img class="frame" alt="Live frame" src="data:${live.imageMimeType || "image/jpeg"};base64,${live.frameJpegBase64}" />`
             : "";
           const note = live.question ? `<p class="meta">Note: ${esc(live.question)}</p>` : "";
+          const aiError = live.aiError ? `<div class="error"><strong>AI error:</strong> ${esc(live.aiError)}</div>` : "";
           const flight = item.flightNo || "-";
           const destination = item.destination || "-";
           const scheduled = item.scheduledTime || "-";
           const estimated = item.estimatedTime || "-";
           const offblock = item.targetedOffblockTime || "-";
           const status = item.status || "-";
+          const statusClass = live.aiError ? "status error" : "status";
           const timestamp = item.messageTimestamp || "-";
           return `
             <article class="card">
@@ -206,7 +225,8 @@
               <p class="meta">TOBT: ${esc(offblock)}</p>
               <p class="meta">Updated: ${esc(timestamp)}</p>
               ${note}
-              <span class="status">${esc(status)}</span>
+              ${aiError}
+              <span class="${statusClass}">${esc(status)}</span>
             </article>
           `;
         }).join("");
