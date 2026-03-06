@@ -90,6 +90,7 @@ class StreamViewModel(
     AIRPORT_INFO,
     FLIGHT_INFO,
     GATE_INFO,
+    ORG_INFO,
   }
 
   private data class CommandCard(
@@ -281,6 +282,7 @@ class StreamViewModel(
                   AssistantIntent.AIRPORT_INFO -> answerAirportInfo(normalizedQuestion)
                   AssistantIntent.FLIGHT_INFO -> answerFlightInfo(normalizedQuestion)
                   AssistantIntent.GATE_INFO -> answerGateInfo(normalizedQuestion)
+                  AssistantIntent.ORG_INFO -> answerOrgInfo(normalizedQuestion)
                   AssistantIntent.VISION -> queryOpenAi(checkNotNull(frame), normalizedQuestion)
                 }
               }
@@ -347,6 +349,12 @@ class StreamViewModel(
         !normalized.contains("gate ") &&
         !FLIGHT_PATTERN.containsMatchIn(question)) {
       return AssistantIntent.AIRPORT_INFO
+    }
+    if (
+        listOf("vp", "vice president", "head ops", "head of ops", "who is my vp", "who is my head ops")
+            .any { normalized.contains(it) }
+    ) {
+      return AssistantIntent.ORG_INFO
     }
     if (FLIGHT_PATTERN.containsMatchIn(question) ||
         listOf("flight", "boarding", "departure", "arrival", "airline").any { normalized.contains(it) }) {
@@ -449,6 +457,18 @@ class StreamViewModel(
       flight.isNotBlank() || destination.isNotBlank() || status.isNotBlank() ->
           "Gate $gate is associated with ${if (flight.isNotBlank()) flight else "a scheduled flight"}${if (destination.isNotBlank()) " to $destination" else ""}. Current status: ${if (status.isNotBlank()) status else "unavailable"}."
       else -> "I found gate $gate, but there is no recent live activity."
+    }
+  }
+
+  private fun answerOrgInfo(question: String): String {
+    val normalized = question.lowercase(Locale.ROOT)
+    return when {
+      normalized.contains("head ops") || normalized.contains("head of ops") ->
+          "Your Head Ops is Jeremin."
+      normalized.contains("vp") || normalized.contains("vice president") ->
+          "Your VP is Alvin Lim."
+      else ->
+          "Your VP is Alvin Lim, and your Head Ops is Jeremin."
     }
   }
 
