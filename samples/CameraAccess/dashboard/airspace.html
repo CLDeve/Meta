@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live Airspace Map</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #06101c;
+      --panel: rgba(8, 18, 32, 0.86);
+      --border: rgba(120, 192, 255, 0.22);
+      --text: #e4f1ff;
+      --muted: #8fb1cf;
+      --accent: #61d7ff;
+      --accent-2: #67ffc7;
+      --warn: #ffbf74;
+      --danger: #ff8d96;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Space Grotesk", "Avenir Next", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1000px 600px at -10% -20%, rgba(85, 187, 255, 0.18), transparent 60%),
+        radial-gradient(900px 580px at 110% 120%, rgba(103, 255, 199, 0.12), transparent 58%),
+        linear-gradient(160deg, #040811, var(--bg));
+    }
+
+    .shell {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 20px 50px rgba(0, 0, 0, 0.26);
+      backdrop-filter: blur(10px);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: start;
+      padding: 16px 18px;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--accent-2);
+    }
+
+    h1 {
+      margin: 6px 0 8px;
+      font-size: clamp(28px, 3vw, 42px);
+      line-height: 0.95;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      margin: 0;
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(11, 26, 44, 0.88);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warn);
+      box-shadow: 0 0 10px var(--warn);
+    }
+
+    .dot.live {
+      background: var(--accent-2);
+      box-shadow: 0 0 12px var(--accent-2);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 14px;
+      min-height: 72vh;
+    }
+
+    .map-panel {
+      overflow: hidden;
+      position: relative;
+      min-height: 640px;
+    }
+
+    #map {
+      width: 100%;
+      min-height: 640px;
+      height: 100%;
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .module {
+      padding: 14px;
+    }
+
+    .module h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .stats {
+      display: grid;
+      gap: 10px;
+    }
+
+    .stat {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(124, 190, 255, 0.18);
+      background: rgba(7, 22, 39, 0.78);
+      font-size: 13px;
+    }
+
+    .stat strong {
+      color: var(--accent);
+      font-size: 15px;
+    }
+
+    .warn { color: var(--warn); }
+    .danger { color: var(--danger); }
+
+    .flights {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+      max-height: 480px;
+      overflow: auto;
+    }
+
+    .flights li {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(124, 190, 255, 0.18);
+      background: rgba(7, 22, 39, 0.78);
+      display: grid;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .flights strong {
+      font-size: 14px;
+      color: #eef8ff;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .leaflet-container {
+      background: #07131f;
+      font: inherit;
+    }
+
+    .plane-marker {
+      width: 18px;
+      height: 18px;
+      transform-origin: center;
+      filter: drop-shadow(0 0 8px rgba(97, 215, 255, 0.4));
+    }
+
+    .plane-marker svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+      background: rgba(8, 18, 32, 0.95);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    @media (max-width: 1080px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="panel topbar">
+      <div>
+        <div class="eyebrow">OpenSky Network / SIN Terminal Watch</div>
+        <h1>Live Airspace Map</h1>
+        <p class="subtitle">Realtime aircraft positions around Singapore using the local OpenSky proxy. The page polls the existing dashboard backend and plots live flights on a geographic map.</p>
+      </div>
+      <div class="actions">
+        <a class="pill" href="/">Event Wall</a>
+        <a class="pill" href="/worldview">Worldview</a>
+        <a class="pill" href="/flights">Flights</a>
+        <a class="pill" href="/gates">Departure Gate Monitor</a>
+        <div class="pill"><span id="liveDot" class="dot"></span><strong id="conn">syncing</strong></div>
+      </div>
+    </header>
+
+    <section class="layout">
+      <article class="panel map-panel">
+        <div id="map"></div>
+      </article>
+
+      <aside class="sidebar">
+        <article class="panel module">
+          <h2>Telemetry</h2>
+          <div class="stats">
+            <div class="stat"><span>Flights in view</span><strong id="count">0</strong></div>
+            <div class="stat"><span>OpenSky mode</span><strong id="mode">idle</strong></div>
+            <div class="stat"><span>Poll cadence</span><strong id="poll">60s</strong></div>
+            <div class="stat"><span>Rate limit left</span><strong id="rate">-</strong></div>
+            <div class="stat"><span>Last update</span><strong id="updated">--</strong></div>
+          </div>
+        </article>
+
+        <article class="panel module">
+          <h2>Tracked Flights</h2>
+          <ul id="flightList" class="flights">
+            <li>No flights loaded yet.</li>
+          </ul>
+        </article>
+      </aside>
+    </section>
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script>
+    const OPEN_SKY_BBOX = { lamin: 1.14, lomin: 103.47, lamax: 1.50, lomax: 104.15 };
+    const SIN_CENTER = [1.3521, 103.8198];
+
+    const liveDot = document.getElementById("liveDot");
+    const conn = document.getElementById("conn");
+    const countEl = document.getElementById("count");
+    const modeEl = document.getElementById("mode");
+    const pollEl = document.getElementById("poll");
+    const rateEl = document.getElementById("rate");
+    const updatedEl = document.getElementById("updated");
+    const flightList = document.getElementById("flightList");
+
+    const map = L.map("map", {
+      zoomControl: true,
+      preferCanvas: true,
+    }).setView(SIN_CENTER, 11);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const bounds = L.latLngBounds(
+      [OPEN_SKY_BBOX.lamin, OPEN_SKY_BBOX.lomin],
+      [OPEN_SKY_BBOX.lamax, OPEN_SKY_BBOX.lomax]
+    );
+
+    L.rectangle(bounds, {
+      color: "#61d7ff",
+      weight: 1,
+      fillOpacity: 0.02,
+    }).addTo(map);
+
+    const flightsLayer = L.layerGroup().addTo(map);
+
+    function setConnection(ok) {
+      conn.textContent = ok ? "live" : "retrying";
+      liveDot.classList.toggle("live", ok);
+    }
+
+    function escapeHtml(text) {
+      return String(text ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function planeIcon(track, onGround) {
+      const heading = Number.isFinite(track) ? track : 0;
+      const color = onGround ? "#ffbf74" : "#67ffc7";
+      return L.divIcon({
+        className: "",
+        html: `
+          <div class="plane-marker" style="transform: rotate(${heading}deg);">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="${color}" d="M12 1l2.5 7.3 7.5 2.7-7.5 2.7L12 23l-2.5-9.3L2 11l7.5-2.7L12 1z"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+    }
+
+    function fmtAltitude(meters) {
+      if (!Number.isFinite(meters)) return "n/a";
+      return `${Math.round(meters * 3.28084).toLocaleString()} ft`;
+    }
+
+    function fmtSpeed(ms) {
+      if (!Number.isFinite(ms)) return "n/a";
+      return `${Math.round(ms * 1.94384)} kt`;
+    }
+
+    function renderList(states) {
+      const items = Array.isArray(states) ? states.slice(0, 25) : [];
+      if (!items.length) {
+        flightList.innerHTML = "<li>No flights in the current map window.</li>";
+        return;
+      }
+      flightList.innerHTML = items.map((state) => {
+        const callsign = state.callsign || state.icao24 || "unknown";
+        const altitude = fmtAltitude(Number(state.baroAltitude ?? state.geoAltitude));
+        const speed = fmtSpeed(Number(state.velocity));
+        const origin = state.originCountry || "Unknown";
+        return `
+          <li>
+            <strong>${escapeHtml(callsign)}</strong>
+            <span class="muted">${escapeHtml(origin)}</span>
+            <span>Altitude: ${escapeHtml(altitude)} • Speed: ${escapeHtml(speed)}</span>
+          </li>
+        `;
+      }).join("");
+    }
+
+    function renderFlights(states) {
+      flightsLayer.clearLayers();
+      for (const state of Array.isArray(states) ? states : []) {
+        const lat = Number(state?.latitude);
+        const lon = Number(state?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          continue;
+        }
+        const marker = L.marker([lat, lon], {
+          icon: planeIcon(Number(state?.trueTrack), Boolean(state?.onGround)),
+          keyboard: false,
+        });
+        const callsign = state?.callsign || state?.icao24 || "unknown";
+        const altitude = fmtAltitude(Number(state?.baroAltitude ?? state?.geoAltitude));
+        const speed = fmtSpeed(Number(state?.velocity));
+        const heading = Number.isFinite(Number(state?.trueTrack)) ? `${Math.round(Number(state.trueTrack))}°` : "n/a";
+        marker.bindPopup(`
+          <strong>${escapeHtml(callsign)}</strong><br/>
+          Country: ${escapeHtml(state?.originCountry || "Unknown")}<br/>
+          Altitude: ${escapeHtml(altitude)}<br/>
+          Speed: ${escapeHtml(speed)}<br/>
+          Track: ${escapeHtml(heading)}
+        `);
+        flightsLayer.addLayer(marker);
+      }
+    }
+
+    async function pollFlights() {
+      let nextPollMs = 60_000;
+      try {
+        const query = new URLSearchParams({
+          lamin: String(OPEN_SKY_BBOX.lamin),
+          lomin: String(OPEN_SKY_BBOX.lomin),
+          lamax: String(OPEN_SKY_BBOX.lamax),
+          lomax: String(OPEN_SKY_BBOX.lomax),
+          limit: "180",
+        });
+        const res = await fetch(`/api/opensky?${query.toString()}`, { cache: "no-store" });
+        const payload = await res.json();
+        if (!res.ok || !payload?.ok) {
+          throw new Error(payload?.error || ("HTTP " + res.status));
+        }
+        const pollFromApi = Number(payload.recommendedPollMs);
+        if (Number.isFinite(pollFromApi) && pollFromApi > 0) {
+          nextPollMs = pollFromApi;
+        }
+        countEl.textContent = String(payload.count || 0);
+        modeEl.textContent = String(payload.authMode || "anonymous");
+        pollEl.textContent = `${Math.round(nextPollMs / 1000)}s`;
+        rateEl.textContent = payload.rateLimitRemaining ?? "-";
+        updatedEl.textContent = new Date(payload.fetchedAtEpochMs || Date.now()).toLocaleTimeString();
+        renderFlights(payload.states || []);
+        renderList(payload.states || []);
+        setConnection(true);
+      } catch (error) {
+        setConnection(false);
+        modeEl.textContent = "offline";
+        renderFlights([]);
+        flightList.innerHTML = `<li class="danger">Failed to load flights: ${escapeHtml(error instanceof Error ? error.message : "unknown error")}</li>`;
+      } finally {
+        window.setTimeout(pollFlights, nextPollMs);
+      }
+    }
+
+    pollFlights();
+  </script>
+</body>
+</html>

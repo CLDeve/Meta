@@ -716,6 +716,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_text(html, "text/html; charset=utf-8")
             return
 
+        if parsed.path in {"/airspace", "/airspace.html"}:
+            airspace_path = Path(__file__).with_name("airspace.html")
+            if not airspace_path.exists():
+                self._send_json({"error": "Missing airspace.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            html = airspace_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
         if parsed.path in {"/worldview", "/worldview.html"}:
             worldview_path = Path(__file__).with_name("worldview.html")
             if not worldview_path.exists():
