@@ -1,0 +1,207 @@
+{
+  "sourceFile": "departure_flights_noslaves_2026-03-06.xlsx",
+  "sheetName": "Departure Flights No Slaves",
+  "count": 20,
+  "gates": [
+    {
+      "gate": "A1",
+      "flightNo": "SQ217",
+      "destination": "MEL",
+      "scheduledTime": "1100",
+      "estimatedTime": "1100",
+      "targetedOffblockTime": "1055",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T03:18:14.000Z"
+    },
+    {
+      "gate": "A2",
+      "flightNo": "SQ878",
+      "destination": "TPE",
+      "scheduledTime": "1140",
+      "estimatedTime": "1140",
+      "targetedOffblockTime": "1140",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T03:57:46.000Z"
+    },
+    {
+      "gate": "A3",
+      "flightNo": "GA829",
+      "destination": "CGK",
+      "scheduledTime": "1255",
+      "estimatedTime": "1255",
+      "targetedOffblockTime": "1255",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T05:17:22.000Z"
+    },
+    {
+      "gate": "A4",
+      "flightNo": "SQ894",
+      "destination": "HKG",
+      "scheduledTime": "1310",
+      "estimatedTime": "1310",
+      "targetedOffblockTime": "1310",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T05:27:58.000Z"
+    },
+    {
+      "gate": "A6",
+      "flightNo": "GN1367",
+      "destination": "ATH",
+      "scheduledTime": "1355",
+      "estimatedTime": "1355",
+      "targetedOffblockTime": "1355",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T04:55:03.000Z"
+    },
+    {
+      "gate": "A7",
+      "flightNo": "UL309D",
+      "destination": "CMB",
+      "scheduledTime": "1130",
+      "estimatedTime": "1300",
+      "targetedOffblockTime": "1300",
+      "status": "New Gate",
+      "messageTimestamp": "2026-03-06T04:21:47.000Z"
+    },
+    {
+      "gate": "A9",
+      "flightNo": "MU5082",
+      "destination": "KMG",
+      "scheduledTime": "1240",
+      "estimatedTime": "1240",
+      "targetedOffblockTime": "1240",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T04:57:19.000Z"
+    },
+    {
+      "gate": "A10",
+      "flightNo": "SQ247",
+      "destination": "MEL",
+      "scheduledTime": "1920",
+      "estimatedTime": "1920",
+      "targetedOffblockTime": "1920",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T04:24:50.000Z"
+    },
+    {
+      "gate": "A11",
+      "flightNo": "MU2070",
+      "destination": "XIY",
+      "scheduledTime": "1400",
+      "estimatedTime": "1400",
+      "targetedOffblockTime": "1400",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T05:00:03.000Z"
+    },
+    {
+      "gate": "A12",
+      "flightNo": "VN650",
+      "destination": "SGN",
+      "scheduledTime": "1315",
+      "estimatedTime": "1315",
+      "targetedOffblockTime": "1305",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T05:23:06.000Z"
+    },
+    {
+      "gate": "A13",
+      "flightNo": "SQ318",
+      "destination": "LHR",
+      "scheduledTime": "1245",
+      "estimatedTime": "1245",
+      "targetedOffblockTime": "1245",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T05:00:50.000Z"
+    },
+    {
+      "gate": "A14",
+      "flightNo": "SQ281",
+      "destination": "AKL",
+      "scheduledTime": "0845",
+      "estimatedTime": "0845",
+      "targetedOffblockTime": "0845",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T01:02:09.000Z"
+    },
+    {
+      "gate": "A15",
+      "flightNo": "VN654",
+      "destination": "SGN",
+      "scheduledTime": "1825",
+      "estimatedTime": "1825",
+      "targetedOffblockTime": "1825",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T03:29:50.000Z"
+    },
+    {
+      "gate": "A16",
+      "flightNo": "SQ522",
+      "destination": "HYD",
+      "scheduledTime": "1955",
+      "estimatedTime": "1955",
+      "targetedOffblockTime": "1955",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T04:59:56.000Z"
+    },
+    {
+      "gate": "A17",
+      "flightNo": "SQ482",
+      "destination": "JNB",
+      "scheduledTime": "1400",
+      "estimatedTime": "1400",
+      "targetedOffblockTime": "1400",
+      "status": "Gate Open",
+      "messageTimestamp": "2026-03-06T05:00:05.000Z"
+    },
+    {
+      "gate": "A18",
+      "flightNo": "SQ251",
+      "destination": "DRW",
+      "scheduledTime": "1845",
+      "estimatedTime": "1845",
+      "targetedOffblockTime": "1845",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T03:49:59.000Z"
+    },
+    {
+      "gate": "A19",
+      "flightNo": "SQ852",
+      "destination": "CAN",
+      "scheduledTime": "1955",
+      "estimatedTime": "1955",
+      "targetedOffblockTime": "1955",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T04:59:50.000Z"
+    },
+    {
+      "gate": "A21",
+      "flightNo": "GA843",
+      "destination": "DPS",
+      "scheduledTime": "1900",
+      "estimatedTime": "1900",
+      "targetedOffblockTime": "1900",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T04:04:57.000Z"
+    },
+    {
+      "gate": "A6F",
+      "flightNo": "FX5315",
+      "destination": "PVG",
+      "scheduledTime": "1300",
+      "estimatedTime": "1300",
+      "targetedOffblockTime": "1248",
+      "status": "Departed",
+      "messageTimestamp": "2026-03-06T05:13:05.000Z"
+    },
+    {
+      "gate": "B1",
+      "flightNo": "SQ297",
+      "destination": "CHC",
+      "scheduledTime": "1950",
+      "estimatedTime": "1950",
+      "targetedOffblockTime": "1950",
+      "status": "Scheduled",
+      "messageTimestamp": "2026-03-06T04:54:49.000Z"
+    }
+  ]
+}

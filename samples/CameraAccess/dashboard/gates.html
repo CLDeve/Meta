@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Top 20 Gates Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05090f;
+      --panel: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.16);
+      --text: #e7f0ff;
+      --muted: #9fb4d1;
+      --accent: #5fb2ff;
+      --ok: #4df0b5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top left, #10233f, var(--bg) 45%);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .topbar {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0.3px;
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 12px;
+      min-height: 150px;
+    }
+
+    .gate {
+      font-size: 30px;
+      line-height: 1;
+      margin: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .flight {
+      margin: 8px 0 4px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .status {
+      margin-top: 10px;
+      display: inline-block;
+      font-size: 12px;
+      border: 1px solid rgba(77, 240, 181, 0.45);
+      color: var(--ok);
+      border-radius: 999px;
+      padding: 4px 8px;
+    }
+
+    .empty {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 18px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1000px) {
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="topbar">
+      <div>
+        <h1 class="title">Top 20 Gates</h1>
+        <p class="subtitle">Snapshot from departure_flights_noslaves_2026-03-06.xlsx</p>
+      </div>
+      <div>
+        <a class="pill" href="/">Back to Dashboard</a>
+      </div>
+    </section>
+
+    <section id="cards" class="cards"></section>
+    <section id="empty" class="empty" style="display:none;">No gate data found.</section>
+  </div>
+
+  <script>
+    const cardsEl = document.getElementById("cards");
+    const emptyEl = document.getElementById("empty");
+
+    function esc(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    async function loadGates() {
+      try {
+        const resp = await fetch("/api/gates20", { cache: "no-store" });
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const payload = await resp.json();
+        const gates = Array.isArray(payload.gates) ? payload.gates : [];
+        if (!gates.length) {
+          emptyEl.style.display = "block";
+          return;
+        }
+
+        cardsEl.innerHTML = gates.slice(0, 20).map((item) => {
+          const flight = item.flightNo || "-";
+          const destination = item.destination || "-";
+          const scheduled = item.scheduledTime || "-";
+          const estimated = item.estimatedTime || "-";
+          const offblock = item.targetedOffblockTime || "-";
+          const status = item.status || "-";
+          const timestamp = item.messageTimestamp || "-";
+          return `
+            <article class="card">
+              <h2 class="gate">${esc(item.gate || "-")}</h2>
+              <p class="flight">${esc(flight)} → ${esc(destination)}</p>
+              <p class="meta">Scheduled: ${esc(scheduled)}</p>
+              <p class="meta">Estimated: ${esc(estimated)}</p>
+              <p class="meta">TOBT: ${esc(offblock)}</p>
+              <p class="meta">Updated: ${esc(timestamp)}</p>
+              <span class="status">${esc(status)}</span>
+            </article>
+          `;
+        }).join("");
+      } catch (error) {
+        cardsEl.innerHTML = "";
+        emptyEl.style.display = "block";
+        emptyEl.textContent = `Failed to load gates data: ${error instanceof Error ? error.message : "unknown error"}`;
+      }
+    }
+
+    loadGates();
+  </script>
+</body>
+</html>

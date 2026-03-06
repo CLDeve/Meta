@@ -616,6 +616,20 @@ def trigger_phone_ptt() -> tuple[int, dict[str, Any]]:
     }
 
 
+def load_gates_snapshot() -> tuple[int, dict[str, Any]]:
+    gates_path = Path(__file__).with_name("gates20.json")
+    if not gates_path.exists():
+        return HTTPStatus.NOT_FOUND, {"ok": False, "error": "Missing gates20.json"}
+    try:
+        payload = json.loads(gates_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Invalid gates20.json"}
+    if not isinstance(payload, dict):
+        return HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Invalid gates payload format"}
+    payload.setdefault("ok", True)
+    return HTTPStatus.OK, payload
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "CameraAccessDashboard/1.0"
 
@@ -666,6 +680,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Missing flights.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
             html = flights_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
+        if parsed.path in {"/gates", "/gates.html"}:
+            gates_path = Path(__file__).with_name("gates.html")
+            if not gates_path.exists():
+                self._send_json({"error": "Missing gates.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            html = gates_path.read_bytes()
             self._send_text(html, "text/html; charset=utf-8")
             return
 
@@ -753,6 +776,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 lomax=lomax,
                 limit=limit,
             )
+            self._send_json(payload, status=status)
+            return
+
+        if parsed.path == "/api/gates20":
+            status, payload = load_gates_snapshot()
             self._send_json(payload, status=status)
             return
 

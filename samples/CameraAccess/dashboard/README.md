@@ -27,6 +27,7 @@ Optional throttle settings:
 Open in browser:
 
 - `http://localhost:5055` (same laptop)
+- `http://localhost:5055/gates` (20 gate cards from provided Excel snapshot)
 - `http://<laptop-lan-ip>:5055` (other devices on same network)
 - `http://localhost:5055/flights` (flight departures page)
 - `http://localhost:5055/worldview` (geospatial intelligence style page)
@@ -55,6 +56,7 @@ Endpoints:
 - `GET /api/opensky?lamin=...&lomin=...&lamax=...&lomax=...&limit=180` proxies:
   `https://opensky-network.org/api/states/all`
   (uses OAuth2 when `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` are set; otherwise anonymous mode)
+- `GET /api/gates20` returns the 20-gate snapshot from `gates20.json`.
 - `POST /api/ptt` sends `cameraaccess://ptt` to the adb-connected phone app from the laptop backend.
   Requires adb on the same machine running `server.py`.
 
