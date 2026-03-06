@@ -88,6 +88,8 @@ class StreamViewModel(
   private enum class AssistantIntent {
     VISION,
     AIRPORT_INFO,
+    FLIGHT_INFO,
+    GATE_INFO,
   }
 
   private data class CommandCard(
@@ -119,6 +121,8 @@ class StreamViewModel(
     private const val MAX_CHAT_MESSAGES = 24
     private const val CIOC_PHONE_NUMBER = "91002365"
     private val TERMINAL_PATTERN = Regex("\\bT([1-4])\\b", RegexOption.IGNORE_CASE)
+    private val FLIGHT_PATTERN = Regex("\\b([A-Z]{2,3}\\s?\\d{1,4}[A-Z]?)\\b", RegexOption.IGNORE_CASE)
+    private val GATE_PATTERN = Regex("\\b([A-Z]\\d{1,2}[A-Z]?)\\b", RegexOption.IGNORE_CASE)
     private val INITIAL_STATE = StreamUiState()
   }
 
@@ -275,6 +279,8 @@ class StreamViewModel(
           runCatching {
                 when (intent) {
                   AssistantIntent.AIRPORT_INFO -> answerAirportInfo(normalizedQuestion)
+                  AssistantIntent.FLIGHT_INFO -> answerFlightInfo(normalizedQuestion)
+                  AssistantIntent.GATE_INFO -> answerGateInfo(normalizedQuestion)
                   AssistantIntent.VISION -> queryOpenAi(checkNotNull(frame), normalizedQuestion)
                 }
               }
@@ -337,7 +343,20 @@ class StreamViewModel(
             )
             .any { normalized.contains(it) } ||
             TERMINAL_PATTERN.containsMatchIn(question)
-    return if (isAirportInfoQuestion) AssistantIntent.AIRPORT_INFO else AssistantIntent.VISION
+    if (isAirportInfoQuestion &&
+        !normalized.contains("gate ") &&
+        !FLIGHT_PATTERN.containsMatchIn(question)) {
+      return AssistantIntent.AIRPORT_INFO
+    }
+    if (FLIGHT_PATTERN.containsMatchIn(question) ||
+        listOf("flight", "boarding", "departure", "arrival", "airline").any { normalized.contains(it) }) {
+      return AssistantIntent.FLIGHT_INFO
+    }
+    if (GATE_PATTERN.containsMatchIn(question) &&
+        listOf("gate", "busy", "crowd", "queue", "status").any { normalized.contains(it) }) {
+      return AssistantIntent.GATE_INFO
+    }
+    return AssistantIntent.VISION
   }
 
   private fun answerAirportInfo(question: String): String {
@@ -374,6 +393,91 @@ class StreamViewModel(
       return "In transit, Terminals 1, 2 and 3 connect by Skytrain, while Terminal 4 connects by shuttle bus. Tell me your from and to terminals, for example T3 to T4, and I can give the exact transfer route."
     }
     return "I can answer terminal transfer questions without using the camera. Ask me things like how to go from T1 to T4, where the Skytrain link is, or how to transfer between terminals in transit."
+  }
+
+  private suspend fun answerFlightInfo(question: String): String = withContext(Dispatchers.IO) {
+    val flightNo =
+        FLIGHT_PATTERN.find(question)?.groupValues?.getOrNull(1)?.replace(" ", "")?.uppercase(Locale.ROOT)
+            ?: throw IOException("Please tell me the flight number, for example SQ318.")
+    val endpoint = assistantBackendBaseUrl()?.let { "$it/api/assistant/flight?flightno=$flightNo" }
+        ?: throw IOException("Backend assistant is not configured. Set COMMAND_CENTER_URL first.")
+    val root = fetchJson(endpoint)
+    if (!root.optBoolean("ok", false)) {
+      throw IOException(root.optString("error").ifBlank { "Flight lookup failed." })
+    }
+    if (!root.optBoolean("found", false)) {
+      val cagUrl = root.optString("cagUrl")
+      val message = root.optString("message").ifBlank { "I could not confirm that flight." }
+      return@withContext if (cagUrl.isNotBlank()) "$message Official CAG page: $cagUrl" else message
+    }
+    val flight = root.optJSONObject("flight") ?: throw IOException("Flight lookup returned no flight details.")
+    val gate = flight.optString("gate").ifBlank { "gate not available" }
+    val status = flight.optString("status").ifBlank { "status unavailable" }
+    val destination = flight.optString("destination").ifBlank { "destination unavailable" }
+    val timing = flight.optString("timing").ifBlank { "time unavailable" }
+    return@withContext "$flightNo to $destination is $status. Gate: $gate. Time: $timing."
+  }
+
+  private suspend fun answerGateInfo(question: String): String = withContext(Dispatchers.IO) {
+    val gate =
+        GATE_PATTERN.find(question)?.groupValues?.getOrNull(1)?.uppercase(Locale.ROOT)
+            ?: throw IOException("Please tell me the gate code, for example C17L.")
+    val endpoint = assistantBackendBaseUrl()?.let { "$it/api/assistant/gate?gate=$gate" }
+        ?: throw IOException("Backend assistant is not configured. Set COMMAND_CENTER_URL first.")
+    val root = fetchJson(endpoint)
+    if (!root.optBoolean("ok", false)) {
+      throw IOException(root.optString("error").ifBlank { "Gate lookup failed." })
+    }
+    if (!root.optBoolean("found", false)) {
+      return@withContext "I could not find live or snapshot information for gate $gate."
+    }
+    val live = root.optJSONObject("live")
+    val snapshot = root.optJSONObject("snapshot")
+    val flight = snapshot?.optString("flightNo").orEmpty()
+    val destination = snapshot?.optString("destination").orEmpty()
+    val status = snapshot?.optString("status").orEmpty()
+    val latestQuestion = live?.optString("question").orEmpty()
+    val latestAnswer = live?.optString("answer").orEmpty()
+    val latestError = live?.optString("aiError").orEmpty()
+    return@withContext when {
+      latestError.isNotBlank() ->
+          "Gate $gate has a recent alert but the last AI check failed: $latestError"
+      latestAnswer.isNotBlank() ->
+          "Latest update for gate $gate: $latestAnswer"
+      latestQuestion.isNotBlank() ->
+          "Latest gate $gate note: $latestQuestion"
+      flight.isNotBlank() || destination.isNotBlank() || status.isNotBlank() ->
+          "Gate $gate is associated with ${if (flight.isNotBlank()) flight else "a scheduled flight"}${if (destination.isNotBlank()) " to $destination" else ""}. Current status: ${if (status.isNotBlank()) status else "unavailable"}."
+      else -> "I found gate $gate, but there is no recent live activity."
+    }
+  }
+
+  private fun assistantBackendBaseUrl(): String? {
+    val endpoint = BuildConfig.COMMAND_CENTER_URL.trim().trimEnd('/')
+    if (endpoint.isBlank()) return null
+    return if (endpoint.endsWith("/api/events")) endpoint.removeSuffix("/api/events") else endpoint.substringBefore("/api/")
+  }
+
+  private fun fetchJson(urlString: String): JSONObject {
+    val url = URL(urlString)
+    val connection =
+        (url.openConnection() as HttpURLConnection).apply {
+          requestMethod = "GET"
+          setRequestProperty("Accept", "application/json")
+          connectTimeout = 10_000
+          readTimeout = 20_000
+        }
+    val code = connection.responseCode
+    val responseStream = if (code in 200..299) connection.inputStream else connection.errorStream
+    val body = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+    if (code !in 200..299) {
+      throw IOException("Backend error $code: $body")
+    }
+    return try {
+      JSONObject(body)
+    } catch (e: JSONException) {
+      throw IOException("Backend returned invalid JSON: $body", e)
+    }
   }
 
   private fun handleLocalPhoneCommand(question: String): Boolean {

@@ -12,6 +12,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone
+from datetime import timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -22,6 +23,7 @@ from urllib.request import Request, urlopen
 
 LOCK = threading.Lock()
 FLIGHTS_API_URL = "https://api.cas.certispsb.net/api-ext/v1/flights/departure/list"
+CHANGI_DEPARTURES_URL = "https://www.changiairport.com/en/fly/flight-information/departures.html"
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
 OPENSKY_TOKEN_URL = (
     "https://auth.opensky-network.org/auth/realms/opensky-network/"
@@ -291,6 +293,103 @@ def fetch_departures(date: str, flight_type: str, flight_no: str) -> tuple[int, 
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"Upstream connection failed: {err.reason}"}
     except json.JSONDecodeError:
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "Upstream returned non-JSON payload"}
+
+
+def _pick_flexible(row: dict[str, Any], keys: list[str], patterns: list[re.Pattern[str]] | None = None) -> str:
+    for key in keys:
+        value = row.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    if patterns:
+        for key, value in row.items():
+            if value is None or not str(value).strip():
+                continue
+            lowered = str(key)
+            if any(pattern.search(lowered) for pattern in patterns):
+                return str(value).strip()
+    return ""
+
+
+def _normalize_flight_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "flightNo": _pick_flexible(row, ["flightNo", "flightno", "flight_no", "flight"], [re.compile(r"flight.*no", re.I), re.compile(r"^flight$", re.I)]),
+        "airline": _pick_flexible(row, ["airlineName", "airline", "carrierName", "carrier"], [re.compile(r"airline", re.I), re.compile(r"carrier", re.I)]),
+        "destination": _pick_flexible(row, ["destination", "dest", "to"], [re.compile(r"dest", re.I), re.compile(r"to", re.I)]),
+        "timing": _pick_flexible(row, ["timing", "scheduledTime", "scheduled", "estimatedTime"], [re.compile(r"time", re.I)]),
+        "gate": _pick_flexible(row, ["terminalGate", "terminal_gate", "terminal", "gate"], [re.compile(r"terminal", re.I), re.compile(r"gate", re.I)]),
+        "status": _pick_flexible(row, ["status", "flightStatus", "remark"], [re.compile(r"status", re.I), re.compile(r"remark", re.I)]),
+        "raw": row,
+    }
+
+
+def resolve_flight_question(flight_no: str) -> tuple[int, dict[str, Any]]:
+    normalized_flight = re.sub(r"\s+", "", flight_no or "").upper()
+    if not normalized_flight:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Missing flight number"}
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    attempts = [
+        ("today", today),
+        ("tomorrow", tomorrow),
+    ]
+
+    for label, date in attempts:
+        status, payload = fetch_departures(date=date, flight_type="scheduled", flight_no=normalized_flight)
+        if status != HTTPStatus.OK or not payload.get("ok", True):
+            continue
+        raw_data = payload.get("data")
+        if isinstance(raw_data, list):
+            rows = [item for item in raw_data if isinstance(item, dict)]
+        elif isinstance(raw_data, dict):
+            rows = [item for item in raw_data.values() if isinstance(item, dict)]
+        else:
+            rows = []
+        normalized_rows = [_normalize_flight_row(row) for row in rows]
+        for row in normalized_rows:
+            if row["flightNo"].replace(" ", "").upper() == normalized_flight:
+                return HTTPStatus.OK, {
+                    "ok": True,
+                    "found": True,
+                    "source": "cas-backend",
+                    "searchedDate": date,
+                    "dateLabel": label,
+                    "flight": row,
+                }
+
+    return HTTPStatus.OK, {
+        "ok": True,
+        "found": False,
+        "source": "cag-only-fallback",
+        "message": f"I could not confirm {normalized_flight} from backend flight data. Check the official Changi departures listing.",
+        "cagUrl": CHANGI_DEPARTURES_URL,
+        "flightNo": normalized_flight,
+    }
+
+
+def resolve_gate_question(gate_code: str) -> tuple[int, dict[str, Any]]:
+    normalized_gate = (gate_code or "").strip().upper()
+    if not normalized_gate:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Missing gate code"}
+
+    live = list_latest_gate_events(limit=500).get(normalized_gate)
+    _, snapshot_payload = load_gates_snapshot()
+    gates = snapshot_payload.get("gates") if isinstance(snapshot_payload, dict) else None
+    static_gate = None
+    if isinstance(gates, list):
+        for item in gates:
+            if isinstance(item, dict) and str(item.get("gate", "")).strip().upper() == normalized_gate:
+                static_gate = item
+                break
+
+    return HTTPStatus.OK, {
+        "ok": True,
+        "found": live is not None or static_gate is not None,
+        "source": "dashboard-gates",
+        "gate": normalized_gate,
+        "live": live,
+        "snapshot": static_gate,
+    }
 
 
 def _to_float(value: str | None, fallback: float) -> float:
@@ -836,6 +935,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 lomax=lomax,
                 limit=limit,
             )
+            self._send_json(payload, status=status)
+            return
+
+        if parsed.path == "/api/assistant/flight":
+            qs = parse_qs(parsed.query)
+            flight_no = (qs.get("flightno", [""])[0] or "").strip()
+            status, payload = resolve_flight_question(flight_no)
+            self._send_json(payload, status=status)
+            return
+
+        if parsed.path == "/api/assistant/gate":
+            qs = parse_qs(parsed.query)
+            gate = (qs.get("gate", [""])[0] or "").strip()
+            status, payload = resolve_gate_question(gate)
             self._send_json(payload, status=status)
             return
 
