@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import threading
@@ -630,6 +631,29 @@ def load_gates_snapshot() -> tuple[int, dict[str, Any]]:
     return HTTPStatus.OK, payload
 
 
+def _extract_gate_from_payload(payload: dict[str, Any]) -> str | None:
+    gate = payload.get("gate")
+    if isinstance(gate, str) and gate.strip():
+        return gate.strip().upper()
+    question = payload.get("question")
+    if not isinstance(question, str):
+        return None
+    match = re.search(r"\\b([A-Z]\\d{1,2}[A-Z]?)\\b", question.upper())
+    return match.group(1) if match else None
+
+
+def list_latest_gate_events(limit: int = 500) -> dict[str, dict[str, Any]]:
+    events = list_events(since=None, limit=max(1, limit))
+    latest: dict[str, dict[str, Any]] = {}
+    for event in reversed(events):
+        gate = _extract_gate_from_payload(event)
+        if not gate:
+            continue
+        if gate not in latest:
+            latest[gate] = event
+    return latest
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "CameraAccessDashboard/1.0"
 
@@ -782,6 +806,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/gates20":
             status, payload = load_gates_snapshot()
             self._send_json(payload, status=status)
+            return
+
+        if parsed.path == "/api/gates-live":
+            qs = parse_qs(parsed.query)
+            limit_raw = (qs.get("limit", ["500"])[0] or "").strip()
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                self._send_json({"ok": False, "error": "Invalid 'limit' query parameter"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            limit = min(max(limit, 1), 2000)
+            payload = {"ok": True, "gates": list_latest_gate_events(limit=limit)}
+            self._send_json(payload)
             return
 
         self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)

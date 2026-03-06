@@ -816,6 +816,7 @@ class StreamViewModel(
               }
             }
 
+        val gate = extractGateCode(question)
         val payload =
             JSONObject()
                 .put("timestampEpochMs", System.currentTimeMillis())
@@ -825,6 +826,7 @@ class StreamViewModel(
                 .put("aiError", aiError ?: JSONObject.NULL)
                 .put("intent", commandCard?.intent ?: JSONObject.NULL)
                 .put("commandCard", commandCard?.let { commandCardToJson(it) } ?: JSONObject.NULL)
+                .put("gate", gate ?: JSONObject.NULL)
                 .put("imageMimeType", if (encodedFrame != null) "image/jpeg" else JSONObject.NULL)
                 .put("frameJpegBase64", encodedFrame ?: JSONObject.NULL)
                 .put("source", "meta-wearables-cameraaccess")
@@ -965,7 +967,8 @@ class StreamViewModel(
   }
 
   private fun extractGateCode(text: String): String? {
-    val gateRegex = Regex("\\b([A-Z]\\d{1,2})\\b")
+    // Matches gates like B1, E27R, C17L.
+    val gateRegex = Regex("\\b([A-Z]\\d{1,2}[A-Z]?)\\b")
     return gateRegex.find(text.uppercase(Locale.ROOT))?.groupValues?.getOrNull(1)
   }
 

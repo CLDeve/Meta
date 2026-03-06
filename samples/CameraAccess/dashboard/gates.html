@@ -78,6 +78,16 @@
       min-height: 150px;
     }
 
+    .frame {
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      margin-bottom: 10px;
+      background: rgba(0, 0, 0, 0.35);
+    }
+
     .gate {
       font-size: 30px;
       line-height: 1;
@@ -157,11 +167,16 @@
 
     async function loadGates() {
       try {
-        const resp = await fetch("/api/gates20", { cache: "no-store" });
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}`);
+        const [gatesResp, liveResp] = await Promise.all([
+          fetch("/api/gates20", { cache: "no-store" }),
+          fetch("/api/gates-live?limit=500", { cache: "no-store" }),
+        ]);
+        if (!gatesResp.ok) {
+          throw new Error(`HTTP ${gatesResp.status}`);
         }
-        const payload = await resp.json();
+        const payload = await gatesResp.json();
+        const livePayload = liveResp.ok ? await liveResp.json() : { gates: {} };
+        const liveMap = livePayload.gates || {};
         const gates = Array.isArray(payload.gates) ? payload.gates : [];
         if (!gates.length) {
           emptyEl.style.display = "block";
@@ -169,6 +184,11 @@
         }
 
         cardsEl.innerHTML = gates.slice(0, 20).map((item) => {
+          const live = liveMap[item.gate] || {};
+          const frame = live.frameJpegBase64
+            ? `<img class="frame" alt="Live frame" src="data:${live.imageMimeType || "image/jpeg"};base64,${live.frameJpegBase64}" />`
+            : "";
+          const note = live.question ? `<p class="meta">Note: ${esc(live.question)}</p>` : "";
           const flight = item.flightNo || "-";
           const destination = item.destination || "-";
           const scheduled = item.scheduledTime || "-";
@@ -178,12 +198,14 @@
           const timestamp = item.messageTimestamp || "-";
           return `
             <article class="card">
+              ${frame}
               <h2 class="gate">${esc(item.gate || "-")}</h2>
               <p class="flight">${esc(flight)} → ${esc(destination)}</p>
               <p class="meta">Scheduled: ${esc(scheduled)}</p>
               <p class="meta">Estimated: ${esc(estimated)}</p>
               <p class="meta">TOBT: ${esc(offblock)}</p>
               <p class="meta">Updated: ${esc(timestamp)}</p>
+              ${note}
               <span class="status">${esc(status)}</span>
             </article>
           `;
