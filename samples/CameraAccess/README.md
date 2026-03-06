@@ -25,6 +25,15 @@ A sample Android application demonstrating integration with Meta Wearables Devic
 1. Clone this repository
 1. Open the project in Android Studio
 1. Wait for the project to sync
+1. Add your API settings to `samples/CameraAccess/local.properties` when building from Android Studio, for example:
+
+```properties
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+COMMAND_CENTER_URL=https://cameraaccess-dashboard.onrender.com/api/events
+```
+
 1. Click the "Build" menu and select "Build Bundle(s) / APK(s)" > "Build APK(s)"
 
 ## Running the app
@@ -107,6 +116,7 @@ If you do not get a reply after asking:
 1. Confirm the stream preview is visible before asking (reply requires a current frame).
 1. Confirm your phone has internet access.
 1. Rebuild with a valid `OPENAI_API_KEY`.
+1. If you build from Android Studio, put `OPENAI_API_KEY` in `samples/CameraAccess/local.properties` and reinstall the app.
 
 ## License
 

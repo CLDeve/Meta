@@ -12,6 +12,8 @@ plugins {
   alias(libs.plugins.compose.compiler)
 }
 
+import java.util.Properties
+
 android {
   namespace = "com.meta.wearable.dat.externalsampleapps.cameraaccess"
   compileSdk = 35
@@ -24,9 +26,22 @@ android {
     targetSdk = 34
     versionCode = 1
     versionName = "1.0"
+    val localProperties =
+        Properties().apply {
+          val localPropertiesFile = rootProject.file("local.properties")
+          if (localPropertiesFile.isFile) {
+            localPropertiesFile.inputStream().use(::load)
+          }
+        }
+
     fun configValue(name: String, defaultValue: String = ""): String {
       val propValue = project.findProperty(name) as String?
       if (!propValue.isNullOrBlank()) return propValue
+      val localValue =
+          sequenceOf(name, name.lowercase(), name.lowercase().replace('_', '.'))
+              .mapNotNull { key -> localProperties.getProperty(key)?.trim() }
+              .firstOrNull { it.isNotEmpty() }
+      if (!localValue.isNullOrEmpty()) return localValue
       return System.getenv(name)?.takeIf { it.isNotBlank() } ?: defaultValue
     }
 
