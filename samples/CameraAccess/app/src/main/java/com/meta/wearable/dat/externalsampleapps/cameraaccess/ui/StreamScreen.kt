@@ -172,6 +172,7 @@ fun StreamScreen(
         isDescribeLoading = streamUiState.isDescribeLoading,
         isHandsFreeModeEnabled = streamUiState.isHandsFreeModeEnabled,
         isPatrolModeEnabled = streamUiState.isPatrolModeEnabled,
+        isLivePovSharingEnabled = streamUiState.isLivePovSharingEnabled,
         describeResult = streamUiState.describeResult,
         describeError = streamUiState.describeError,
         commandCenterStatus = streamUiState.commandCenterStatus,
@@ -450,6 +451,7 @@ private fun StatusOverlay(
     isDescribeLoading: Boolean,
     isHandsFreeModeEnabled: Boolean,
     isPatrolModeEnabled: Boolean,
+    isLivePovSharingEnabled: Boolean,
     describeResult: String?,
     describeError: String?,
     commandCenterStatus: String?,
@@ -462,6 +464,7 @@ private fun StatusOverlay(
           !isListening &&
           !isHandsFreeModeEnabled &&
           !isPatrolModeEnabled &&
+          !isLivePovSharingEnabled &&
           describeResult.isNullOrEmpty() &&
           describeError.isNullOrEmpty() &&
           commandCenterStatus.isNullOrEmpty() &&
@@ -509,6 +512,12 @@ private fun StatusOverlay(
           StatusChip(
               label = "Patrol mode active",
               tint = Color(0xFFFFE082),
+          )
+        }
+        if (isLivePovSharingEnabled) {
+          StatusChip(
+              label = "Live POV sharing",
+              tint = Color(0xFF9ED3FF),
           )
         }
       }

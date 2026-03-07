@@ -120,6 +120,10 @@ class StreamViewModel(
     private const val PATROL_ALERT_COOLDOWN_MS = 20_000L
     private const val PATROL_START_MESSAGE = "Patrol mode started. I will alert you if I see a possible unattended item."
     private const val PATROL_STOP_MESSAGE = "Patrol mode stopped."
+    private const val LIVE_POV_SHARE_INTERVAL_MS = 1_000L
+    private const val LIVE_POV_EVENT_TYPE = "live_pov"
+    private const val LIVE_POV_START_MESSAGE = "Live P O V sharing started."
+    private const val LIVE_POV_STOP_MESSAGE = "Live P O V sharing stopped."
     private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
     private const val COMMAND_CENTER_DISABLED =
         "Set COMMAND_CENTER_URL to forward responses to command centre"
@@ -146,6 +150,7 @@ class StreamViewModel(
   private var stateJob: Job? = null
   private var timerJob: Job? = null
   private var patrolJob: Job? = null
+  private var livePovJob: Job? = null
   private var lastPreviewFrameAtMs: Long = 0L
   private var speechRecognizer: SpeechRecognizer? = null
   private var latestVoiceContext: Context? = null
@@ -224,6 +229,7 @@ class StreamViewModel(
     stateJob?.cancel()
     stateJob = null
     stopPatrolMode()
+    stopLivePovSharing()
     stopVoiceDescribe(disableHandsFreeMode = true)
     streamSession?.close()
     streamSession = null
@@ -634,6 +640,12 @@ class StreamViewModel(
 
   private fun handleLocalPhoneCommand(question: String): Boolean {
     val normalized = question.lowercase(Locale.ROOT)
+    if (isStartLivePovCommand(normalized)) {
+      return startLivePovSharing(question)
+    }
+    if (isStopLivePovCommand(normalized)) {
+      return stopLivePovSharing(question)
+    }
     if (isLostFoundCommand(normalized)) {
       captureLostFoundReport(question)
       return true
@@ -704,6 +716,137 @@ class StreamViewModel(
         text == "lost and found report" ||
         text == "report lost and found" ||
         text == "lost found"
+  }
+
+  private fun isStartLivePovCommand(text: String): Boolean {
+    return listOf(
+            "share live pov",
+            "start live pov",
+            "start live p o v",
+            "start pov sharing",
+            "share live view",
+            "share what i see",
+        )
+        .any { text.contains(it) }
+  }
+
+  private fun isStopLivePovCommand(text: String): Boolean {
+    return listOf(
+            "stop live pov",
+            "stop live p o v",
+            "stop pov sharing",
+            "stop sharing pov",
+            "stop share live view",
+        )
+        .any { text.contains(it) }
+  }
+
+  private fun startLivePovSharing(question: String): Boolean {
+    appendChatMessage(ChatRole.USER, question)
+    if (_uiState.value.isLivePovSharingEnabled) {
+      val alreadyRunning = "Live P O V sharing is already running."
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = alreadyRunning,
+            describeError = null,
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+      appendChatMessage(ChatRole.ASSISTANT, alreadyRunning)
+      speakText(alreadyRunning)
+      return true
+    }
+
+    val frame = _uiState.value.videoFrame
+    if (frame == null) {
+      val noFrameError = "No frame available yet for live P O V sharing."
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = null,
+            describeError = noFrameError,
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+      appendChatMessage(ChatRole.ASSISTANT, "Error: $noFrameError")
+      return true
+    }
+
+    livePovJob?.cancel()
+    _uiState.update {
+      it.copy(
+          isLivePovSharingEnabled = true,
+          isDescribeLoading = false,
+          describeResult = LIVE_POV_START_MESSAGE,
+          describeError = null,
+          commandCenterStatus = null,
+          commandCenterError = null,
+      )
+    }
+    appendChatMessage(ChatRole.ASSISTANT, LIVE_POV_START_MESSAGE)
+    speakText(LIVE_POV_START_MESSAGE)
+    livePovJob =
+        viewModelScope.launch {
+          while (_uiState.value.isLivePovSharingEnabled) {
+            runCatching { publishLivePovFrame() }
+                .onFailure { Log.e(TAG, "Live POV share failed", it) }
+            delay(LIVE_POV_SHARE_INTERVAL_MS)
+          }
+        }
+    return true
+  }
+
+  private fun stopLivePovSharing(question: String? = null): Boolean {
+    if (question != null) {
+      appendChatMessage(ChatRole.USER, question)
+    }
+    livePovJob?.cancel()
+    livePovJob = null
+    val wasEnabled = _uiState.value.isLivePovSharingEnabled
+    _uiState.update {
+      it.copy(
+          isLivePovSharingEnabled = false,
+          isDescribeLoading = false,
+          describeResult = if (question != null || wasEnabled) LIVE_POV_STOP_MESSAGE else it.describeResult,
+          describeError = null,
+          commandCenterStatus = null,
+          commandCenterError = null,
+      )
+    }
+    if (question != null || wasEnabled) {
+      appendChatMessage(ChatRole.ASSISTANT, LIVE_POV_STOP_MESSAGE)
+      if (question != null) {
+        speakText(LIVE_POV_STOP_MESSAGE)
+      }
+    }
+    return wasEnabled || question != null
+  }
+
+  private suspend fun publishLivePovFrame() {
+    val frame = _uiState.value.videoFrame ?: return
+    var commandCenterStatus: String? = null
+    var commandCenterError: String? = null
+    runCatching {
+          sendToCommandCenter(
+              question = "Live POV share",
+              answer = "Live POV frame update",
+              aiError = null,
+              frame = frame,
+              eventType = LIVE_POV_EVENT_TYPE,
+          )
+        }
+        .onSuccess { commandCenterStatus = it }
+        .onFailure { commandCenterError = it.message }
+
+    _uiState.update {
+      it.copy(
+          commandCenterStatus = commandCenterStatus,
+          commandCenterError = commandCenterError,
+      )
+    }
   }
 
   private fun captureLostFoundReport(question: String) {

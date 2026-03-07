@@ -211,6 +211,16 @@ def list_lost_found_events(limit: int) -> list[dict[str, Any]]:
     return filtered[-limit:]
 
 
+def list_live_pov_events(limit: int) -> list[dict[str, Any]]:
+    items = list_events(since=None, limit=max(limit * 8, limit))
+    filtered = [
+        item
+        for item in items
+        if str(item.get("eventType", "")).strip().lower() == "live_pov"
+    ]
+    return filtered[-limit:]
+
+
 def clear_events() -> int:
     with LOCK:
         conn = _db()
@@ -924,6 +934,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_text(html, "text/html; charset=utf-8")
             return
 
+        if parsed.path in {"/live-pov", "/live-pov.html"}:
+            live_pov_path = Path(__file__).with_name("live-pov.html")
+            if not live_pov_path.exists():
+                self._send_json({"error": "Missing live-pov.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            html = live_pov_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
         if parsed.path in {"/airspace", "/airspace.html"}:
             airspace_path = Path(__file__).with_name("airspace.html")
             if not airspace_path.exists():
@@ -994,6 +1013,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             limit = min(max(limit, 1), 500)
             items = list_lost_found_events(limit=limit)
             self._send_json({"ok": True, "items": items, "count": len(items)})
+            return
+
+        if parsed.path == "/api/live-pov":
+            qs = parse_qs(parsed.query)
+            limit_raw = qs.get("limit", ["1"])[0]
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                self._send_json({"ok": False, "error": "Invalid 'limit' query parameter"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            limit = min(max(limit, 1), 10)
+            items = list_live_pov_events(limit=limit)
+            latest = items[-1] if items else None
+            self._send_json({"ok": True, "item": latest, "items": items, "count": len(items)})
             return
 
         if parsed.path == "/api/flights":

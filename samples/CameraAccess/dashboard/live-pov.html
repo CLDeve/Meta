@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live POV Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #02060c;
+      --panel: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.14);
+      --text: #edf4ff;
+      --muted: #96acc9;
+      --accent: #8cd0ff;
+      --live: #4df0b5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(140, 208, 255, 0.14), transparent 25%),
+        radial-gradient(circle at bottom left, rgba(77, 240, 181, 0.12), transparent 20%),
+        var(--bg);
+    }
+    .shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .title {
+      margin: 0;
+      font-size: 30px;
+    }
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 10px var(--live);
+    }
+    .viewer {
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      overflow: hidden;
+      background: rgba(5, 16, 30, 0.92);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+    }
+    .frame {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      display: block;
+      background: #071424;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 14px 16px 18px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px;
+    }
+    .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .value {
+      font-size: 16px;
+      line-height: 1.4;
+    }
+    .empty {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+    @media (max-width: 780px) {
+      .meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="topbar">
+      <div>
+        <h1 class="title">Live POV Viewer</h1>
+        <p class="subtitle">Phase 1 live sharing from the glasses app using continuous frame updates</p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <span class="pill"><span class="dot"></span><span id="liveState">waiting</span></span>
+        <a class="pill" href="/">Back to Dashboard</a>
+      </div>
+    </section>
+
+    <section id="viewer" class="viewer" style="display:none;">
+      <img id="frame" class="frame" alt="Live POV frame" />
+      <div class="meta">
+        <div class="card">
+          <div class="label">Updated</div>
+          <div id="updatedAt" class="value">-</div>
+        </div>
+        <div class="card">
+          <div class="label">Source</div>
+          <div id="source" class="value">-</div>
+        </div>
+        <div class="card">
+          <div class="label">Status</div>
+          <div id="statusText" class="value">Live POV frame update</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="empty" class="empty">No live POV stream yet. Say “share live POV” in the app to begin.</section>
+  </div>
+
+  <script>
+    const liveState = document.getElementById("liveState");
+    const viewer = document.getElementById("viewer");
+    const empty = document.getElementById("empty");
+    const frameEl = document.getElementById("frame");
+    const updatedAt = document.getElementById("updatedAt");
+    const sourceEl = document.getElementById("source");
+    const statusText = document.getElementById("statusText");
+
+    function formatTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    async function refreshLivePov() {
+      try {
+        const resp = await fetch("/api/live-pov", { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const payload = await resp.json();
+        const item = payload.item;
+        if (!item || !item.frameJpegBase64) {
+          viewer.style.display = "none";
+          empty.style.display = "block";
+          liveState.textContent = "waiting";
+          return;
+        }
+        frameEl.src = `data:${item.imageMimeType || "image/jpeg"};base64,${item.frameJpegBase64}`;
+        updatedAt.textContent = formatTime(item.receivedAtIso);
+        sourceEl.textContent = item.source || "meta-wearables-cameraaccess";
+        statusText.textContent = item.answer || "Live POV frame update";
+        viewer.style.display = "block";
+        empty.style.display = "none";
+        liveState.textContent = "live";
+      } catch (error) {
+        liveState.textContent = "error";
+        empty.style.display = "block";
+        empty.textContent = `Failed to load live POV: ${error.message}`;
+      }
+    }
+
+    refreshLivePov();
+    setInterval(refreshLivePov, 1000);
+  </script>
+</body>
+</html>
