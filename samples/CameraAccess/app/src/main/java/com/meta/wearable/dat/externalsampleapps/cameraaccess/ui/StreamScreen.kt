@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -56,6 +57,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +66,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.StopCircle
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.BorderStroke
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meta.wearable.dat.camera.types.StreamSessionState
@@ -103,12 +111,12 @@ fun StreamScreen(
   }
 
   val backgroundBrush =
-      Brush.linearGradient(listOf(Color(0xFF07101F), Color(0xFF0A1830), Color(0xFF0B1D3A)))
+      Brush.linearGradient(listOf(Color(0xFF02060C), Color(0xFF07101F), Color(0xFF0A1830)))
 
   Box(modifier = modifier.fillMaxSize().background(brush = backgroundBrush)) {
-    val previewShape = RoundedCornerShape(28.dp)
+    val previewShape = RoundedCornerShape(0.dp)
     Box(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
       streamUiState.videoFrame?.let { videoFrame ->
@@ -117,19 +125,12 @@ fun StreamScreen(
             contentDescription = stringResource(R.string.live_stream),
             modifier =
                 Modifier.fillMaxSize()
-                    .shadow(elevation = 12.dp, shape = previewShape, clip = true)
-                    .clip(previewShape)
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.08f),
-                        shape = previewShape,
-                    ),
+                    .clip(previewShape),
             contentScale = ContentScale.Crop,
         )
       } ?: Surface(
           modifier =
               Modifier.fillMaxSize()
-                  .shadow(elevation = 12.dp, shape = previewShape, clip = true)
                   .clip(previewShape),
           color = Color(0xFF0E1D36),
       ) {
@@ -146,7 +147,15 @@ fun StreamScreen(
           modifier =
               Modifier.fillMaxSize()
                   .clip(previewShape)
-                  .background(Color.Black.copy(alpha = 0.2f))
+                  .background(
+                      Brush.verticalGradient(
+                          listOf(
+                              Color.Black.copy(alpha = 0.48f),
+                              Color.Transparent,
+                              Color.Black.copy(alpha = 0.44f),
+                          )
+                      )
+                  )
       )
     }
     if (streamUiState.streamSessionState == StreamSessionState.STARTING) {
@@ -157,7 +166,9 @@ fun StreamScreen(
 
     StatusOverlay(
         streamUiState = streamUiState,
-        modifier = Modifier.align(Alignment.TopStart).padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier =
+            Modifier.align(Alignment.TopStart)
+                .padding(horizontal = 14.dp, vertical = 16.dp),
     )
 
     ChatOverlay(
@@ -166,43 +177,54 @@ fun StreamScreen(
         onToggleExpanded = { isChatExpanded = !isChatExpanded },
         onSendQuestion = { streamViewModel.describeCurrentFrame(it) },
         modifier =
-            Modifier.align(Alignment.BottomStart)
+            Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, bottom = 146.dp)
+                .padding(start = 14.dp, end = 14.dp, bottom = 106.dp)
                 .imePadding(),
     )
 
-    Box(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
+    Box(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
       Surface(
           modifier =
               Modifier.align(Alignment.BottomCenter)
                   .navigationBarsPadding()
                   .fillMaxWidth(),
-          color = Color(0xFF0D1F39).copy(alpha = 0.78f),
-          shape = RoundedCornerShape(20.dp),
-          border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+          color = Color(0xFF071424).copy(alpha = 0.82f),
+          shape = RoundedCornerShape(28.dp),
+          border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
       ) {
         Row(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-          SwitchButton(
+          MiniActionButton(
+              icon = Icons.Filled.StopCircle,
               label = stringResource(R.string.stop_stream_button_short_title),
               onClick = {
                 streamViewModel.stopStream()
                 wearablesViewModel.navigateToDeviceSelection()
               },
-              isDestructive = true,
+              tint = Color(0xFFFFC1C7),
               modifier = Modifier.weight(1f),
           )
 
-          SwitchButton(
+          MiniActionButton(
+              icon = Icons.Filled.GraphicEq,
               label = stringResource(R.string.describe_button_short_title),
               onClick = { streamViewModel.startVoiceDescribe(context) },
               enabled = !streamUiState.isDescribeLoading,
+              tint = Color(0xFF9ED3FF),
+              modifier = Modifier.weight(1f),
+          )
+
+          MiniActionButton(
+              icon = Icons.AutoMirrored.Filled.Chat,
+              label = if (isChatExpanded) stringResource(R.string.chat_hide_button) else stringResource(R.string.chat_show_button),
+              onClick = { isChatExpanded = !isChatExpanded },
+              tint = Color(0xFFFFD97C),
               modifier = Modifier.weight(1f),
           )
 
@@ -263,29 +285,38 @@ private fun ChatOverlay(
 
   Surface(
       modifier = modifier,
-      color = Color(0xFF0A1B34).copy(alpha = 0.82f),
-      shape = RoundedCornerShape(16.dp),
-      border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+      color = Color(0xFF071424).copy(alpha = 0.82f),
+      shape = RoundedCornerShape(24.dp),
+      border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+      shadowElevation = 18.dp,
   ) {
-    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = stringResource(id = R.string.chat_title),
-            color = Color.White,
-            style = AppTypography.Body.copy(fontWeight = FontWeight.SemiBold),
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        TextButton(onClick = onToggleExpanded) {
+        Surface(
+            color = Color.White.copy(alpha = 0.08f),
+            shape = RoundedCornerShape(999.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+        ) {
           Text(
-              text = if (isExpanded) stringResource(id = R.string.chat_hide_button) else stringResource(id = R.string.chat_show_button),
-              style = AppTypography.Button,
+              text = "Assistant",
+              modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+              color = Color.White,
+              style = AppTypography.Body.copy(fontWeight = FontWeight.SemiBold),
           )
         }
+        Spacer(modifier = Modifier.weight(1f))
         if (streamUiState.isDescribeLoading) {
           Text(
               text = stringResource(id = R.string.describe_loading),
               color = Color(0xFFB9F6CA),
               style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
+          )
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        TextButton(onClick = onToggleExpanded) {
+          Text(
+              text = if (isExpanded) stringResource(id = R.string.chat_hide_button) else stringResource(id = R.string.chat_show_button),
+              style = AppTypography.Button,
           )
         }
       }
@@ -296,9 +327,9 @@ private fun ChatOverlay(
                 ?: stringResource(id = R.string.chat_collapsed_hint)
         Text(
             text = preview,
-            color = Color.LightGray,
+            color = Color(0xFFD7E7FF),
             style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
-            maxLines = 1,
+            maxLines = 2,
         )
         return@Column
       }
@@ -306,7 +337,7 @@ private fun ChatOverlay(
       if (streamUiState.chatMessages.isNotEmpty()) {
         val recentMessages = streamUiState.chatMessages.takeLast(3)
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 108.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 120.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           items(recentMessages) { message -> ChatBubble(message = message) }
@@ -336,7 +367,7 @@ private fun ChatOverlay(
         Button(
             onClick = { submitDraft() },
             enabled = canSend,
-            modifier = Modifier.widthIn(min = 70.dp),
+            modifier = Modifier.widthIn(min = 76.dp),
         ) {
           Text(text = stringResource(id = R.string.chat_send_button), style = AppTypography.Button)
         }
@@ -350,9 +381,9 @@ private fun ChatBubble(message: ChatMessage) {
   val isUser = message.role == ChatRole.USER
   val bubbleColor =
       if (isUser) {
-        Color(0xFF2E6CC2).copy(alpha = 0.82f)
+        Color(0xFF2C77E6).copy(alpha = 0.9f)
       } else {
-        Color(0xFF12284A).copy(alpha = 0.82f)
+        Color(0xFF10233E).copy(alpha = 0.9f)
       }
 
   Row(
@@ -362,7 +393,7 @@ private fun ChatBubble(message: ChatMessage) {
     Surface(
         color = bubbleColor,
         shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
     ) {
       Text(
           text = message.text,
@@ -396,11 +427,12 @@ private fun StatusOverlay(
 
   Surface(
       modifier = modifier.fillMaxWidth().widthIn(max = 420.dp),
-      color = Color(0xFF0A1B34).copy(alpha = 0.72f),
-      shape = RoundedCornerShape(14.dp),
-      border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+      color = Color(0xFF071424).copy(alpha = 0.74f),
+      shape = RoundedCornerShape(22.dp),
+      border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+      shadowElevation = 14.dp,
   ) {
-    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
       val primaryStatus =
           when {
             streamUiState.isListening -> stringResource(id = R.string.voice_listening)
@@ -415,25 +447,24 @@ private fun StatusOverlay(
         Text(
             text = text,
             color = Color.White,
-            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize),
-            maxLines = 2,
+            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize, fontWeight = FontWeight.SemiBold),
+            maxLines = 3,
         )
       }
 
-      if (streamUiState.isHandsFreeModeEnabled) {
-        Text(
-            text = stringResource(id = R.string.hands_free_mode_active),
-            color = Color(0xFFB9F6CA),
-            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
-        )
-      }
-
-      if (streamUiState.isPatrolModeEnabled) {
-        Text(
-            text = "Patrol mode active",
-            color = Color(0xFFFFE082),
-            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
-        )
+      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (streamUiState.isHandsFreeModeEnabled) {
+          StatusChip(
+              label = stringResource(id = R.string.hands_free_mode_active),
+              tint = Color(0xFFB9F6CA),
+          )
+        }
+        if (streamUiState.isPatrolModeEnabled) {
+          StatusChip(
+              label = "Patrol mode active",
+              tint = Color(0xFFFFE082),
+          )
+        }
       }
 
       streamUiState.voiceHeardText?.let { heard ->
@@ -459,6 +490,66 @@ private fun StatusOverlay(
             style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
         )
       }
+    }
+  }
+}
+
+@Composable
+private fun StatusChip(label: String, tint: Color) {
+  Surface(
+      color = tint.copy(alpha = 0.12f),
+      shape = RoundedCornerShape(999.dp),
+      border = BorderStroke(1.dp, tint.copy(alpha = 0.28f)),
+  ) {
+    Text(
+        text = label,
+        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        color = tint,
+        style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
+    )
+  }
+}
+
+@Composable
+private fun MiniActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color = Color.White,
+) {
+  Button(
+      onClick = onClick,
+      enabled = enabled,
+      modifier = modifier.height(56.dp),
+      colors =
+          androidx.compose.material3.ButtonDefaults.buttonColors(
+              containerColor = Color.White.copy(alpha = 0.08f),
+              contentColor = Color.White,
+              disabledContainerColor = Color.White.copy(alpha = 0.04f),
+              disabledContentColor = Color.White.copy(alpha = 0.3f),
+          ),
+      shape = RoundedCornerShape(18.dp),
+      border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+  ) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+      Icon(
+          imageVector = icon,
+          contentDescription = label,
+          tint = tint,
+          modifier = Modifier.size(18.dp),
+      )
+      Spacer(modifier = Modifier.height(4.dp))
+      Text(
+          text = label,
+          style = AppTypography.Button.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
+          color = Color.White,
+          maxLines = 1,
+      )
     }
   }
 }
