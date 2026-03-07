@@ -23,6 +23,7 @@ from urllib.request import Request, urlopen
 
 LOCK = threading.Lock()
 FLIGHTS_API_URL = "https://api.cas.certispsb.net/api-ext/v1/flights/departure/list"
+CHANGI_ALLOWED_HOST = "www.changiairport.com"
 CHANGI_DEPARTURES_URL = "https://www.changiairport.com/en/fly/flight-information/departures.html"
 CHANGI_SEARCH_URL = "https://www.changiairport.com/en/search.html"
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
@@ -348,6 +349,11 @@ def _expand_destination(value: str) -> str:
     return raw
 
 
+def _is_allowed_changi_url(url: str) -> bool:
+    parsed = urlparse((url or "").strip())
+    return parsed.scheme == "https" and parsed.netloc == CHANGI_ALLOWED_HOST
+
+
 def _normalize_flight_row(row: dict[str, Any]) -> dict[str, Any]:
     destination_raw = _pick_flexible(row, ["destination", "dest", "to"], [re.compile(r"dest", re.I), re.compile(r"to", re.I)])
     return {
@@ -397,12 +403,28 @@ def resolve_flight_question(flight_no: str) -> tuple[int, dict[str, Any]]:
                     "flight": row,
                 }
 
+    cag_url = f"{CHANGI_SEARCH_URL}?q={normalized_flight}"
+    if not _is_allowed_changi_url(cag_url):
+        return HTTPStatus.INTERNAL_SERVER_ERROR, {
+            "ok": False,
+            "error": "Configured Changi fallback URL is not allowed.",
+        }
+    if not _is_allowed_changi_url(CHANGI_DEPARTURES_URL):
+        return HTTPStatus.INTERNAL_SERVER_ERROR, {
+            "ok": False,
+            "error": "Configured Changi departures URL is not allowed.",
+        }
+
     return HTTPStatus.OK, {
         "ok": True,
         "found": False,
         "source": "cag-only-fallback",
+        "sourcePolicy": {
+            "airportInfo": CHANGI_ALLOWED_HOST,
+            "flightFallback": CHANGI_ALLOWED_HOST,
+        },
         "message": f"I could not confirm {normalized_flight} from backend flight data. Check the official CAG search results for this flight number.",
-        "cagUrl": f"{CHANGI_SEARCH_URL}?q={normalized_flight}",
+        "cagUrl": cag_url,
         "cagDeparturesUrl": CHANGI_DEPARTURES_URL,
         "flightNo": normalized_flight,
     }
