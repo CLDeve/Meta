@@ -107,11 +107,11 @@ class StreamViewModel(
   companion object {
     private const val TAG = "StreamViewModel"
     private const val MAX_VOICE_RETRIES = 1
-    private const val AI_REQUEST_JPEG_QUALITY = 60
+    private const val AI_REQUEST_JPEG_QUALITY = 50
     private const val AI_READ_TIMEOUT_MS = 45_000
-    private const val STREAM_FPS = 15
+    private const val STREAM_FPS = 24
     private const val PREVIEW_JPEG_QUALITY = 70
-    private const val PREVIEW_MAX_FPS = 8L
+    private const val PREVIEW_MAX_FPS = 1L
     private const val PREVIEW_MIN_FRAME_INTERVAL_MS = 1000L / PREVIEW_MAX_FPS
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
