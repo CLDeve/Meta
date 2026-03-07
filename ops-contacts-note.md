@@ -13,3 +13,6 @@
 - Leonard Oh: Chief Executive, Technology Services Business
 - Brett Pickens: Chief Executive, Australia
 - Raahul Kumar: Chief Executive, International and Robotics
+- Alvin Lim: Vice President and Head, Certis Aviation Security
+- Ho Wai San: Assistant Vice President, Head, Development
+- Charles Lim Yik Min: Manager, Acting Head, Operation Technology

@@ -370,6 +370,8 @@ class StreamViewModel(
                 "who is my head ops",
                 "alvin lim",
                 "jeremin",
+                "ho wai san",
+                "charles lim yik min",
                 "tian beng",
                 "ng tian beng",
                 "goh soo lim",
@@ -526,6 +528,12 @@ class StreamViewModel(
     return when {
       normalized.contains("ng tian beng") || normalized.contains("tian beng") ->
           "Ng Tian Beng is the President and Group C E O."
+      normalized.contains("alvin lim") ->
+          "Alvin Lim is the Vice President and Head of Certis Aviation Security."
+      normalized.contains("ho wai san") ->
+          "Ho Wai San is the Assistant Vice President and Head of Development."
+      normalized.contains("charles lim yik min") ->
+          "Charles Lim Yik Min is the Manager and Acting Head of Operation Technology."
       normalized.contains("goh soo lim") ->
           "Goh Soo Lim is the Group Chief Financial Officer."
       normalized.contains("dr jaclyn lee") || normalized.contains("jaclyn lee") ->
@@ -554,14 +562,12 @@ class StreamViewModel(
           "Dr Jaclyn Lee is the Chief Human Resources Officer and Chief Executive of Certis Corporate University."
       normalized.contains("group chief technology officer") || normalized.contains("cto") ->
           "Yeo Teck Guan is the Group Chief Technology Officer."
-      normalized.contains("alvin lim") ->
-          "Alvin Lim is your VP."
       normalized.contains("jeremin") ->
           "Jeremin is your Head Ops."
       normalized.contains("head ops") || normalized.contains("head of ops") ->
           "Your Head Ops is Jeremin."
       normalized.contains("vp") || normalized.contains("vice president") ->
-          "Your VP is Alvin Lim."
+          "Your VP is Alvin Lim, Vice President and Head of Certis Aviation Security."
       else ->
           "Your VP is Alvin Lim, and your Head Ops is Jeremin."
     }
