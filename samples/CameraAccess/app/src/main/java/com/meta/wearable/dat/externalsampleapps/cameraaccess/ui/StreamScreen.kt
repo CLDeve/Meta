@@ -101,6 +101,9 @@ fun StreamScreen(
   val streamUiState by streamViewModel.uiState.collectAsStateWithLifecycle()
   val context = LocalContext.current
   var isChatExpanded by rememberSaveable { mutableStateOf(false) }
+  val videoFrame = streamUiState.videoFrame
+  val chatMessages = streamUiState.chatMessages
+  val isDescribeLoading = streamUiState.isDescribeLoading
 
   LaunchedEffect(Unit) { streamViewModel.startStream() }
   LaunchedEffect(autoStartVoiceNonce) {
@@ -119,9 +122,9 @@ fun StreamScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-      streamUiState.videoFrame?.let { videoFrame ->
+      videoFrame?.let { currentFrame ->
         Image(
-            bitmap = videoFrame.asImageBitmap(),
+            bitmap = currentFrame.asImageBitmap(),
             contentDescription = stringResource(R.string.live_stream),
             modifier =
                 Modifier.fillMaxSize()
@@ -165,20 +168,29 @@ fun StreamScreen(
     }
 
     StatusOverlay(
-        streamUiState = streamUiState,
+        isListening = streamUiState.isListening,
+        isDescribeLoading = streamUiState.isDescribeLoading,
+        isHandsFreeModeEnabled = streamUiState.isHandsFreeModeEnabled,
+        isPatrolModeEnabled = streamUiState.isPatrolModeEnabled,
+        describeResult = streamUiState.describeResult,
+        describeError = streamUiState.describeError,
+        commandCenterStatus = streamUiState.commandCenterStatus,
+        commandCenterError = streamUiState.commandCenterError,
+        voiceHeardText = streamUiState.voiceHeardText,
         modifier =
             Modifier.align(Alignment.TopStart)
                 .padding(horizontal = 14.dp, vertical = 16.dp),
     )
 
     ChatOverlay(
-        streamUiState = streamUiState,
+        isDescribeLoading = isDescribeLoading,
+        chatMessages = chatMessages,
         isExpanded = isChatExpanded,
         onToggleExpanded = { isChatExpanded = !isChatExpanded },
         onSendQuestion = { streamViewModel.describeCurrentFrame(it) },
         modifier =
-            Modifier.align(Alignment.BottomCenter)
-                .fillMaxWidth()
+            Modifier.align(Alignment.BottomStart)
+                .widthIn(max = 420.dp)
                 .padding(start = 14.dp, end = 14.dp, bottom = 106.dp)
                 .imePadding(),
     )
@@ -215,7 +227,7 @@ fun StreamScreen(
               icon = Icons.Filled.GraphicEq,
               label = stringResource(R.string.describe_button_short_title),
               onClick = { streamViewModel.startVoiceDescribe(context) },
-              enabled = !streamUiState.isDescribeLoading,
+              enabled = !isDescribeLoading,
               tint = Color(0xFF9ED3FF),
               modifier = Modifier.weight(1f),
           )
@@ -265,30 +277,69 @@ fun StreamScreen(
 
 @Composable
 private fun ChatOverlay(
-    streamUiState: StreamUiState,
+    isDescribeLoading: Boolean,
+    chatMessages: List<ChatMessage>,
     isExpanded: Boolean,
     onToggleExpanded: () -> Unit,
     onSendQuestion: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
   var draft by rememberSaveable { mutableStateOf("") }
-  val canSend = draft.isNotBlank() && !streamUiState.isDescribeLoading
+  val canSend = draft.isNotBlank() && !isDescribeLoading
 
   fun submitDraft() {
     val normalized = draft.trim()
-    if (normalized.isEmpty() || streamUiState.isDescribeLoading) {
+    if (normalized.isEmpty() || isDescribeLoading) {
       return
     }
     onSendQuestion(normalized)
     draft = ""
   }
 
+  if (!isExpanded) {
+    Surface(
+        modifier = modifier,
+        color = Color(0xFF071424).copy(alpha = 0.68f),
+        shape = RoundedCornerShape(999.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+      Row(
+          modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        Surface(
+            color = Color(0xFFFFD97C).copy(alpha = 0.14f),
+            shape = RoundedCornerShape(999.dp),
+            border = BorderStroke(1.dp, Color(0xFFFFD97C).copy(alpha = 0.26f)),
+        ) {
+          Text(
+              text = "Chat",
+              modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+              color = Color(0xFFFFD97C),
+              style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
+          )
+        }
+        Text(
+            text = chatMessages.lastOrNull()?.text ?: stringResource(id = R.string.chat_collapsed_hint),
+            color = Color(0xFFD7E7FF),
+            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onToggleExpanded) {
+          Text(text = stringResource(id = R.string.chat_show_button), style = AppTypography.Button)
+        }
+      }
+    }
+    return
+  }
+
   Surface(
       modifier = modifier,
-      color = Color(0xFF071424).copy(alpha = 0.82f),
-      shape = RoundedCornerShape(24.dp),
+      color = Color(0xFF06111E).copy(alpha = 0.92f),
+      shape = RoundedCornerShape(22.dp),
       border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-      shadowElevation = 18.dp,
   ) {
     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -305,7 +356,7 @@ private fun ChatOverlay(
           )
         }
         Spacer(modifier = Modifier.weight(1f))
-        if (streamUiState.isDescribeLoading) {
+        if (isDescribeLoading) {
           Text(
               text = stringResource(id = R.string.describe_loading),
               color = Color(0xFFB9F6CA),
@@ -321,23 +372,10 @@ private fun ChatOverlay(
         }
       }
 
-      if (!isExpanded) {
-        val preview =
-            streamUiState.chatMessages.lastOrNull()?.text
-                ?: stringResource(id = R.string.chat_collapsed_hint)
-        Text(
-            text = preview,
-            color = Color(0xFFD7E7FF),
-            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
-            maxLines = 2,
-        )
-        return@Column
-      }
-
-      if (streamUiState.chatMessages.isNotEmpty()) {
-        val recentMessages = streamUiState.chatMessages.takeLast(3)
+      if (chatMessages.isNotEmpty()) {
+        val recentMessages = chatMessages.takeLast(3)
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 120.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 108.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           items(recentMessages) { message -> ChatBubble(message = message) }
@@ -352,11 +390,11 @@ private fun ChatOverlay(
             placeholder = {
               Text(
                   text = stringResource(id = R.string.chat_input_placeholder),
-                  style = AppTypography.Body.copy(color = Color.LightGray),
+                  style = AppTypography.Body.copy(color = Color(0xFF8EA5C7)),
               )
             },
             singleLine = true,
-            enabled = !streamUiState.isDescribeLoading,
+            enabled = !isDescribeLoading,
             textStyle = AppTypography.Body.copy(color = Color.White),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { submitDraft() }),
@@ -408,19 +446,27 @@ private fun ChatBubble(message: ChatMessage) {
 
 @Composable
 private fun StatusOverlay(
-    streamUiState: StreamUiState,
+    isListening: Boolean,
+    isDescribeLoading: Boolean,
+    isHandsFreeModeEnabled: Boolean,
+    isPatrolModeEnabled: Boolean,
+    describeResult: String?,
+    describeError: String?,
+    commandCenterStatus: String?,
+    commandCenterError: String?,
+    voiceHeardText: String?,
     modifier: Modifier = Modifier,
 ) {
   if (
-      !streamUiState.isDescribeLoading &&
-          !streamUiState.isListening &&
-          !streamUiState.isHandsFreeModeEnabled &&
-          !streamUiState.isPatrolModeEnabled &&
-          streamUiState.describeResult.isNullOrEmpty() &&
-          streamUiState.describeError.isNullOrEmpty() &&
-          streamUiState.commandCenterStatus.isNullOrEmpty() &&
-          streamUiState.commandCenterError.isNullOrEmpty() &&
-          streamUiState.voiceHeardText.isNullOrEmpty()
+      !isDescribeLoading &&
+          !isListening &&
+          !isHandsFreeModeEnabled &&
+          !isPatrolModeEnabled &&
+          describeResult.isNullOrEmpty() &&
+          describeError.isNullOrEmpty() &&
+          commandCenterStatus.isNullOrEmpty() &&
+          commandCenterError.isNullOrEmpty() &&
+          voiceHeardText.isNullOrEmpty()
   ) {
     return
   }
@@ -435,11 +481,11 @@ private fun StatusOverlay(
     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
       val primaryStatus =
           when {
-            streamUiState.isListening -> stringResource(id = R.string.voice_listening)
-            streamUiState.isDescribeLoading -> stringResource(id = R.string.describe_loading)
-            !streamUiState.describeError.isNullOrEmpty() ->
-                "${stringResource(id = R.string.describe_error_prefix)} ${streamUiState.describeError}"
-            !streamUiState.describeResult.isNullOrEmpty() -> streamUiState.describeResult
+            isListening -> stringResource(id = R.string.voice_listening)
+            isDescribeLoading -> stringResource(id = R.string.describe_loading)
+            !describeError.isNullOrEmpty() ->
+                "${stringResource(id = R.string.describe_error_prefix)} $describeError"
+            !describeResult.isNullOrEmpty() -> describeResult
             else -> null
           }
 
@@ -453,13 +499,13 @@ private fun StatusOverlay(
       }
 
       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (streamUiState.isHandsFreeModeEnabled) {
+        if (isHandsFreeModeEnabled) {
           StatusChip(
               label = stringResource(id = R.string.hands_free_mode_active),
               tint = Color(0xFFB9F6CA),
           )
         }
-        if (streamUiState.isPatrolModeEnabled) {
+        if (isPatrolModeEnabled) {
           StatusChip(
               label = "Patrol mode active",
               tint = Color(0xFFFFE082),
@@ -467,7 +513,7 @@ private fun StatusOverlay(
         }
       }
 
-      streamUiState.voiceHeardText?.let { heard ->
+      voiceHeardText?.let { heard ->
         Text(
             text = "${stringResource(id = R.string.voice_heard_label)} $heard",
             color = Color.LightGray,
@@ -475,7 +521,7 @@ private fun StatusOverlay(
         )
       }
 
-      streamUiState.commandCenterStatus?.let { status ->
+      commandCenterStatus?.let { status ->
         Text(
             text = status,
             color = Color(0xFFB9F6CA),
@@ -483,7 +529,7 @@ private fun StatusOverlay(
         )
       }
 
-      streamUiState.commandCenterError?.let { error ->
+      commandCenterError?.let { error ->
         Text(
             text = "${stringResource(id = R.string.command_center_error_prefix)} $error",
             color = Color(0xFFFFB4A9),
