@@ -370,6 +370,23 @@ class StreamViewModel(
                 "who is my head ops",
                 "alvin lim",
                 "jeremin",
+                "tian beng",
+                "ng tian beng",
+                "goh soo lim",
+                "dr jaclyn lee",
+                "jaclyn lee",
+                "laura low",
+                "yeo teck guan",
+                "ronald poon",
+                "ng boon gay",
+                "lee hock heng",
+                "leonard oh",
+                "brett pickens",
+                "raahul kumar",
+                "group ceo",
+                "chief financial officer",
+                "chief human resources officer",
+                "group chief technology officer",
             )
             .any { normalized.contains(it) }
     ) {
@@ -507,6 +524,36 @@ class StreamViewModel(
   private fun answerOrgInfo(question: String): String {
     val normalized = question.lowercase(Locale.ROOT)
     return when {
+      normalized.contains("ng tian beng") || normalized.contains("tian beng") ->
+          "Ng Tian Beng is the President and Group C E O."
+      normalized.contains("goh soo lim") ->
+          "Goh Soo Lim is the Group Chief Financial Officer."
+      normalized.contains("dr jaclyn lee") || normalized.contains("jaclyn lee") ->
+          "Dr Jaclyn Lee is the Chief Human Resources Officer and Chief Executive of Certis Corporate University."
+      normalized.contains("laura low") ->
+          "Laura Low is the General Counsel and Group Head of Legal and Corporate Affairs."
+      normalized.contains("yeo teck guan") ->
+          "Yeo Teck Guan is the Group Chief Technology Officer."
+      normalized.contains("ronald poon") ->
+          "Ronald Poon is the Chief Executive, Singapore."
+      normalized.contains("ng boon gay") ->
+          "Ng Boon Gay is the Deputy Chief Executive, Singapore Operations."
+      normalized.contains("lee hock heng") ->
+          "Lee Hock Heng is the Deputy Chief Executive, Singapore Commercial, and Chairman E X C O, Qatar."
+      normalized.contains("leonard oh") ->
+          "Leonard Oh is the Chief Executive of the Technology Services Business."
+      normalized.contains("brett pickens") ->
+          "Brett Pickens is the Chief Executive, Australia."
+      normalized.contains("raahul kumar") ->
+          "Raahul Kumar is the Chief Executive, International and Robotics."
+      normalized.contains("group ceo") || normalized.contains("president") ->
+          "Ng Tian Beng is the President and Group C E O."
+      normalized.contains("chief financial officer") || normalized.contains("cfo") ->
+          "Goh Soo Lim is the Group Chief Financial Officer."
+      normalized.contains("chief human resources officer") || normalized.contains("human resources officer") ->
+          "Dr Jaclyn Lee is the Chief Human Resources Officer and Chief Executive of Certis Corporate University."
+      normalized.contains("group chief technology officer") || normalized.contains("cto") ->
+          "Yeo Teck Guan is the Group Chief Technology Officer."
       normalized.contains("alvin lim") ->
           "Alvin Lim is your VP."
       normalized.contains("jeremin") ->
