@@ -201,6 +201,16 @@ def count_events() -> int:
     return int(row["count"]) if row is not None else 0
 
 
+def list_lost_found_events(limit: int) -> list[dict[str, Any]]:
+    items = list_events(since=None, limit=max(limit * 4, limit))
+    filtered = [
+        item
+        for item in items
+        if str(item.get("eventType", "")).strip().lower() == "lost_found"
+    ]
+    return filtered[-limit:]
+
+
 def clear_events() -> int:
     with LOCK:
         conn = _db()
@@ -905,6 +915,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_text(html, "text/html; charset=utf-8")
             return
 
+        if parsed.path in {"/lost-found", "/lost-found.html"}:
+            lost_found_path = Path(__file__).with_name("lost-found.html")
+            if not lost_found_path.exists():
+                self._send_json({"error": "Missing lost-found.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            html = lost_found_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
         if parsed.path in {"/airspace", "/airspace.html"}:
             airspace_path = Path(__file__).with_name("airspace.html")
             if not airspace_path.exists():
@@ -962,6 +981,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
             events = list_events(since=since, limit=limit)
             self._send_json({"events": events, "count": len(events)})
+            return
+
+        if parsed.path == "/api/lost-found":
+            qs = parse_qs(parsed.query)
+            limit_raw = qs.get("limit", ["100"])[0]
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                self._send_json({"ok": False, "error": "Invalid 'limit' query parameter"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            limit = min(max(limit, 1), 500)
+            items = list_lost_found_events(limit=limit)
+            self._send_json({"ok": True, "items": items, "count": len(items)})
             return
 
         if parsed.path == "/api/flights":

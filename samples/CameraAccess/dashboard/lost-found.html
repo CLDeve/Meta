@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lost and Found Monitor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111d;
+      --panel: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.16);
+      --text: #eaf2ff;
+      --muted: #9db2cf;
+      --accent: #ffd36e;
+      --ok: #4df0b5;
+      --warn: #ffb57a;
+      --error: #ff9eaa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(255, 211, 110, 0.18), transparent 26%),
+        radial-gradient(circle at bottom left, rgba(77, 240, 181, 0.12), transparent 22%),
+        var(--bg);
+    }
+
+    .shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .topbar {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 30px;
+      letter-spacing: 0.3px;
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--panel);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .frame {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 12px;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.28);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 211, 110, 0.35);
+      background: rgba(255, 211, 110, 0.12);
+      color: var(--accent);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .answer {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.45;
+    }
+
+    .meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .empty {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--panel);
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="topbar">
+      <div>
+        <h1 class="title">Lost and Found Monitor</h1>
+        <p class="subtitle">Officer-submitted lost property reports from the glasses app</p>
+      </div>
+      <div>
+        <a class="pill" href="/">Back to Dashboard</a>
+      </div>
+    </section>
+
+    <section id="grid" class="grid"></section>
+    <section id="empty" class="empty" style="display:none;">No lost-and-found reports yet. Say “lost and found” in the app to create one.</section>
+  </div>
+
+  <script>
+    const gridEl = document.getElementById("grid");
+    const emptyEl = document.getElementById("empty");
+
+    function esc(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function formatTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    async function loadItems() {
+      const resp = await fetch("/api/lost-found?limit=60", { cache: "no-store" });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const payload = await resp.json();
+      const items = Array.isArray(payload.items) ? payload.items.slice().reverse() : [];
+      if (!items.length) {
+        gridEl.innerHTML = "";
+        emptyEl.style.display = "block";
+        return;
+      }
+
+      emptyEl.style.display = "none";
+      gridEl.innerHTML = items.map((item) => {
+        const frame = item.frameJpegBase64
+          ? `<img class="frame" alt="Lost item frame" src="data:${item.imageMimeType || "image/jpeg"};base64,${item.frameJpegBase64}" />`
+          : `<div class="frame" style="display:flex;align-items:center;justify-content:center;color:#90a8c8;">No frame</div>`;
+        const answer = item.answer || "Lost item report captured.";
+        return `
+          <article class="card">
+            ${frame}
+            <span class="tag">Lost and Found</span>
+            <p class="answer">${esc(answer)}</p>
+            <p class="meta">Question: ${esc(item.question || "lost and found")}</p>
+            <p class="meta">Received: ${esc(formatTime(item.receivedAtIso || item.timestampIso || ""))}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function refreshLoop() {
+      try {
+        await loadItems();
+      } catch (error) {
+        emptyEl.style.display = "block";
+        emptyEl.textContent = `Failed to load lost-and-found reports: ${error.message}`;
+      }
+    }
+
+    refreshLoop();
+    setInterval(refreshLoop, 2000);
+  </script>
+</body>
+</html>

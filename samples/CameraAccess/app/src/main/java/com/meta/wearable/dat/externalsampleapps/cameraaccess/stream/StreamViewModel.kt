@@ -124,6 +124,7 @@ class StreamViewModel(
     private const val COMMAND_CENTER_DISABLED =
         "Set COMMAND_CENTER_URL to forward responses to command centre"
     private const val QA_EVENT_TYPE = "qa"
+    private const val LOST_FOUND_EVENT_TYPE = "lost_found"
     private const val MAX_CHAT_MESSAGES = 24
     private const val CIOC_PHONE_NUMBER = "91002365"
     private val TERMINAL_PATTERN = Regex("\\bT([1-4])\\b", RegexOption.IGNORE_CASE)
@@ -633,6 +634,10 @@ class StreamViewModel(
 
   private fun handleLocalPhoneCommand(question: String): Boolean {
     val normalized = question.lowercase(Locale.ROOT)
+    if (isLostFoundCommand(normalized)) {
+      captureLostFoundReport(question)
+      return true
+    }
     if (isStartPatrolCommand(normalized)) {
       return startPatrolMode(question)
     }
@@ -692,6 +697,87 @@ class StreamViewModel(
           appendChatMessage(ChatRole.ASSISTANT, "Error: $err")
           false
         }
+  }
+
+  private fun isLostFoundCommand(text: String): Boolean {
+    return text == "lost and found" ||
+        text == "lost and found report" ||
+        text == "report lost and found" ||
+        text == "lost found"
+  }
+
+  private fun captureLostFoundReport(question: String) {
+    appendChatMessage(ChatRole.USER, question)
+    val frame = _uiState.value.videoFrame
+    if (frame == null) {
+      val noFrameError = "No frame available yet for lost and found."
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = null,
+            describeError = noFrameError,
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+      appendChatMessage(ChatRole.ASSISTANT, "Error: $noFrameError")
+      return
+    }
+
+    viewModelScope.launch {
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = true,
+            describeError = null,
+            describeResult = null,
+            commandCenterStatus = null,
+            commandCenterError = null,
+        )
+      }
+
+      val result =
+          runCatching { describeLostFoundItem(frame) }
+              .onFailure { Log.e(TAG, "Lost and found capture failed", it) }
+
+      val describeResult = result.getOrNull()
+      val describeError = result.exceptionOrNull()?.message
+      when {
+        !describeResult.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, describeResult)
+        !describeError.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, "Error: $describeError")
+      }
+      if (!describeResult.isNullOrBlank()) {
+        speakText(describeResult)
+      } else if (!describeError.isNullOrBlank()) {
+        speakText("I could not capture the lost item clearly. Please try again.")
+      }
+
+      var commandCenterStatus: String? = null
+      var commandCenterError: String? = null
+      runCatching {
+            sendToCommandCenter(
+                question = "lost and found",
+                answer = describeResult,
+                aiError = describeError,
+                frame = frame,
+                eventType = LOST_FOUND_EVENT_TYPE,
+            )
+          }
+          .onSuccess { commandCenterStatus = it }
+          .onFailure {
+            commandCenterError = it.message
+            Log.e(TAG, "Lost and found send failed", it)
+          }
+
+      _uiState.update {
+        it.copy(
+            isDescribeLoading = false,
+            describeResult = describeResult,
+            describeError = describeError,
+            commandCenterStatus = commandCenterStatus,
+            commandCenterError = commandCenterError,
+        )
+      }
+    }
   }
 
   private fun isStartPatrolCommand(text: String): Boolean {
@@ -1290,6 +1376,7 @@ class StreamViewModel(
       answer: String?,
       aiError: String?,
       frame: Bitmap?,
+      eventType: String = QA_EVENT_TYPE,
   ): String =
       withContext(Dispatchers.IO) {
         val endpoint = BuildConfig.COMMAND_CENTER_URL.trim()
@@ -1310,7 +1397,7 @@ class StreamViewModel(
         val payload =
             JSONObject()
                 .put("timestampEpochMs", System.currentTimeMillis())
-                .put("eventType", QA_EVENT_TYPE)
+                .put("eventType", eventType)
                 .put("question", question)
                 .put("answer", answer ?: JSONObject.NULL)
                 .put("aiError", aiError ?: JSONObject.NULL)
@@ -1342,6 +1429,12 @@ class StreamViewModel(
         }
         COMMAND_CENTER_SUCCESS
       }
+
+  private suspend fun describeLostFoundItem(bitmap: Bitmap): String = withContext(Dispatchers.IO) {
+    val prompt =
+        "Identify the main lost property item visible in this image. Answer in one short sentence starting with 'Lost item:' and include the item type, visible color, and any obvious brand or distinctive feature only if clearly visible."
+    queryOpenAi(bitmap, prompt)
+  }
 
   private fun buildCommandCard(question: String, answer: String?, aiError: String?): CommandCard? {
     if (question.isBlank() && answer.isNullOrBlank() && aiError.isNullOrBlank()) {
