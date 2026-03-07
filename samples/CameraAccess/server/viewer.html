@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live POV WebRTC Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #03070d;
+      --panel: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.14);
+      --text: #eef5ff;
+      --muted: #93abc8;
+      --accent: #8fd3ff;
+      --live: #4df0b5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(143, 211, 255, 0.15), transparent 25%),
+        radial-gradient(circle at bottom left, rgba(77, 240, 181, 0.12), transparent 20%),
+        var(--bg);
+    }
+    .shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .title { margin: 0; font-size: 30px; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 10px var(--live);
+    }
+    .viewer {
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      overflow: hidden;
+      background: rgba(6, 17, 30, 0.92);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.4);
+    }
+    .frame {
+      width: 100%;
+      aspect-ratio: 16/9;
+      display: block;
+      object-fit: cover;
+      background: #071424;
+    }
+    .footer {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 14px 16px 18px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      padding: 12px;
+    }
+    .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .value { font-size: 16px; line-height: 1.45; }
+    @media (max-width: 780px) {
+      .footer { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="topbar">
+      <div>
+        <h1 class="title">Live POV WebRTC Viewer</h1>
+        <p class="subtitle">Low-latency browser viewer for the glasses stream</p>
+      </div>
+      <div class="pill"><span class="dot"></span><span id="state">connecting</span></div>
+    </section>
+
+    <section class="viewer">
+      <img id="frame" class="frame" alt="Live POV frame" />
+      <div class="footer">
+        <div class="card">
+          <div class="label">Transport</div>
+          <div class="value">WebRTC peer connection with data channel</div>
+        </div>
+        <div class="card">
+          <div class="label">Room</div>
+          <div id="roomLabel" class="value">cameraaccess</div>
+        </div>
+        <div class="card">
+          <div class="label">Notes</div>
+          <div id="notes" class="value">Waiting for broadcaster</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const room = new URLSearchParams(window.location.search).get("room") || "cameraaccess";
+    const stateEl = document.getElementById("state");
+    const notesEl = document.getElementById("notes");
+    const frameEl = document.getElementById("frame");
+    document.getElementById("roomLabel").textContent = room;
+
+    let pc = null;
+    let ws = null;
+
+    async function fetchIceServers() {
+      const resp = await fetch("/api/turn", { cache: "no-store" });
+      if (!resp.ok) throw new Error(`TURN config failed: ${resp.status}`);
+      const payload = await resp.json();
+      return payload.iceServers || [{ urls: ["stun:stun.l.google.com:19302"] }];
+    }
+
+    async function ensurePc() {
+      if (pc) return pc;
+      const iceServers = await fetchIceServers();
+      pc = new RTCPeerConnection({ iceServers });
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) return;
+        ws.send(JSON.stringify({
+          type: "ice",
+          room,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex,
+          candidate: event.candidate.candidate,
+        }));
+      };
+      pc.ondatachannel = (event) => {
+        const channel = event.channel;
+        channel.binaryType = "arraybuffer";
+        channel.onopen = () => {
+          stateEl.textContent = "live";
+          notesEl.textContent = "Receiving JPEG frames over WebRTC data channel";
+        };
+        channel.onmessage = (message) => {
+          if (!(message.data instanceof ArrayBuffer)) return;
+          const blob = new Blob([message.data], { type: "image/jpeg" });
+          frameEl.src = URL.createObjectURL(blob);
+        };
+      };
+      return pc;
+    }
+
+    async function start() {
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${protocol}://${location.host}/ws`);
+      ws.onopen = () => {
+        stateEl.textContent = "waiting";
+        ws.send(JSON.stringify({ type: "join", room, role: "viewer" }));
+      };
+      ws.onmessage = async (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "offer") {
+          const currentPc = await ensurePc();
+          await currentPc.setRemoteDescription({ type: "offer", sdp: message.sdp });
+          const answer = await currentPc.createAnswer();
+          await currentPc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "answer", room, sdp: answer.sdp }));
+          notesEl.textContent = "Negotiated WebRTC session";
+          return;
+        }
+        if (message.type === "ice") {
+          if (!pc) return;
+          await pc.addIceCandidate({
+            sdpMid: message.sdpMid,
+            sdpMLineIndex: message.sdpMLineIndex,
+            candidate: message.candidate,
+          });
+          return;
+        }
+        if (message.type === "peer-left") {
+          stateEl.textContent = "waiting";
+          notesEl.textContent = "Broadcaster disconnected";
+          return;
+        }
+        if (message.type === "error") {
+          stateEl.textContent = "error";
+          notesEl.textContent = message.message || "Signaling error";
+        }
+      };
+      ws.onerror = () => {
+        stateEl.textContent = "error";
+        notesEl.textContent = "WebSocket signaling failed";
+      };
+    }
+
+    start().catch((error) => {
+      stateEl.textContent = "error";
+      notesEl.textContent = error.message;
+    });
+  </script>
+</body>
+</html>

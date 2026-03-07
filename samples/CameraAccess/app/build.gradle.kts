@@ -56,10 +56,14 @@ android {
     val openAiModel = configValue("OPENAI_MODEL", "gpt-4o-mini")
     val openAiApiKey = configValue("OPENAI_API_KEY")
     val commandCenterUrl = configValue("COMMAND_CENTER_URL")
+    val livePovSignalingUrl = configValue("LIVE_POV_SIGNALALING_URL", configValue("LIVE_POV_SIGNALING_URL", "ws://127.0.0.1:8181/ws"))
+    val livePovRoom = configValue("LIVE_POV_ROOM", "cameraaccess")
     buildConfigField("String", "OPENAI_BASE_URL", asBuildConfigString(openAiBaseUrl))
     buildConfigField("String", "OPENAI_MODEL", asBuildConfigString(openAiModel))
     buildConfigField("String", "OPENAI_API_KEY", asBuildConfigString(openAiApiKey))
     buildConfigField("String", "COMMAND_CENTER_URL", asBuildConfigString(commandCenterUrl))
+    buildConfigField("String", "LIVE_POV_SIGNALING_URL", asBuildConfigString(livePovSignalingUrl))
+    buildConfigField("String", "LIVE_POV_ROOM", asBuildConfigString(livePovRoom))
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables { useSupportLibrary = true }
@@ -102,6 +106,8 @@ dependencies {
   implementation(libs.mwdat.core)
   implementation(libs.mwdat.camera)
   implementation(libs.mwdat.mockdevice)
+  implementation(libs.squareup.okhttp)
+  implementation(libs.stream.webrtc.android)
   androidTestImplementation(libs.androidx.ui.test.junit4)
   androidTestImplementation(libs.androidx.test.uiautomator)
   androidTestImplementation(libs.androidx.test.rules)

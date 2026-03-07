@@ -57,6 +57,7 @@ import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
 import com.meta.wearable.dat.core.selectors.DeviceSelector
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.BuildConfig
+import com.meta.wearable.dat.externalsampleapps.cameraaccess.webrtc.WebRtcClient
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.wearables.WearablesViewModel
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -112,7 +113,9 @@ class StreamViewModel(
     private const val STREAM_FPS = 24
     private const val PREVIEW_JPEG_QUALITY = 70
     private const val PREVIEW_MAX_FPS = 1L
+    private const val LIVE_POV_MAX_FPS = 8L
     private const val PREVIEW_MIN_FRAME_INTERVAL_MS = 1000L / PREVIEW_MAX_FPS
+    private const val LIVE_POV_MIN_FRAME_INTERVAL_MS = 1000L / LIVE_POV_MAX_FPS
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
     private const val HANDS_FREE_STOP_MESSAGE = "Hands-free mode stopped."
@@ -120,8 +123,6 @@ class StreamViewModel(
     private const val PATROL_ALERT_COOLDOWN_MS = 20_000L
     private const val PATROL_START_MESSAGE = "Patrol mode started. I will alert you if I see a possible unattended item."
     private const val PATROL_STOP_MESSAGE = "Patrol mode stopped."
-    private const val LIVE_POV_SHARE_INTERVAL_MS = 1_000L
-    private const val LIVE_POV_EVENT_TYPE = "live_pov"
     private const val LIVE_POV_START_MESSAGE = "Live P O V sharing started."
     private const val LIVE_POV_STOP_MESSAGE = "Live P O V sharing stopped."
     private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
@@ -150,8 +151,8 @@ class StreamViewModel(
   private var stateJob: Job? = null
   private var timerJob: Job? = null
   private var patrolJob: Job? = null
-  private var livePovJob: Job? = null
   private var lastPreviewFrameAtMs: Long = 0L
+  private var lastLivePovFrameAtMs: Long = 0L
   private var speechRecognizer: SpeechRecognizer? = null
   private var latestVoiceContext: Context? = null
   private var audioManager: AudioManager? = null
@@ -165,6 +166,7 @@ class StreamViewModel(
   private var isSpeakingAnswer = false
   private var lastPatrolAlertAtMs: Long = 0L
   private var lastPatrolAlertText: String? = null
+  private var livePovClient: WebRtcClient? = null
 
   init {
     // Collect timer state
@@ -775,7 +777,9 @@ class StreamViewModel(
       return true
     }
 
-    livePovJob?.cancel()
+    livePovClient?.stop()
+    livePovClient = null
+    lastLivePovFrameAtMs = 0L
     _uiState.update {
       it.copy(
           isLivePovSharingEnabled = true,
@@ -788,14 +792,34 @@ class StreamViewModel(
     }
     appendChatMessage(ChatRole.ASSISTANT, LIVE_POV_START_MESSAGE)
     speakText(LIVE_POV_START_MESSAGE)
-    livePovJob =
-        viewModelScope.launch {
-          while (_uiState.value.isLivePovSharingEnabled) {
-            runCatching { publishLivePovFrame() }
-                .onFailure { Log.e(TAG, "Live POV share failed", it) }
-            delay(LIVE_POV_SHARE_INTERVAL_MS)
-          }
-        }
+    val appContext = getApplication<Application>().applicationContext
+    livePovClient =
+        WebRtcClient(
+                context = appContext,
+                signalingUrl = BuildConfig.LIVE_POV_SIGNALING_URL,
+                room = BuildConfig.LIVE_POV_ROOM,
+                listener =
+                    object : WebRtcClient.Listener {
+                      override fun onStatusChanged(message: String) {
+                        _uiState.update {
+                          it.copy(
+                              commandCenterStatus = message,
+                              commandCenterError = null,
+                          )
+                        }
+                      }
+
+                      override fun onError(message: String) {
+                        _uiState.update {
+                          it.copy(
+                              commandCenterError = message,
+                              commandCenterStatus = null,
+                          )
+                        }
+                      }
+                    },
+            )
+            .also { it.start() }
     return true
   }
 
@@ -803,8 +827,9 @@ class StreamViewModel(
     if (question != null) {
       appendChatMessage(ChatRole.USER, question)
     }
-    livePovJob?.cancel()
-    livePovJob = null
+    livePovClient?.stop()
+    livePovClient = null
+    lastLivePovFrameAtMs = 0L
     val wasEnabled = _uiState.value.isLivePovSharingEnabled
     _uiState.update {
       it.copy(
@@ -823,30 +848,6 @@ class StreamViewModel(
       }
     }
     return wasEnabled || question != null
-  }
-
-  private suspend fun publishLivePovFrame() {
-    val frame = _uiState.value.videoFrame ?: return
-    var commandCenterStatus: String? = null
-    var commandCenterError: String? = null
-    runCatching {
-          sendToCommandCenter(
-              question = "Live POV share",
-              answer = "Live POV frame update",
-              aiError = null,
-              frame = frame,
-              eventType = LIVE_POV_EVENT_TYPE,
-          )
-        }
-        .onSuccess { commandCenterStatus = it }
-        .onFailure { commandCenterError = it.message }
-
-    _uiState.update {
-      it.copy(
-          commandCenterStatus = commandCenterStatus,
-          commandCenterError = commandCenterError,
-      )
-    }
   }
 
   private fun captureLostFoundReport(question: String) {
@@ -1770,7 +1771,10 @@ class StreamViewModel(
 
   private fun handleVideoFrame(videoFrame: VideoFrame) {
     val nowMs = System.currentTimeMillis()
-    if (nowMs - lastPreviewFrameAtMs < PREVIEW_MIN_FRAME_INTERVAL_MS) {
+    val livePovEnabled = _uiState.value.isLivePovSharingEnabled
+    val minFrameIntervalMs =
+        if (livePovEnabled) LIVE_POV_MIN_FRAME_INTERVAL_MS else PREVIEW_MIN_FRAME_INTERVAL_MS
+    if (nowMs - lastPreviewFrameAtMs < minFrameIntervalMs) {
       return
     }
     lastPreviewFrameAtMs = nowMs
@@ -1801,6 +1805,10 @@ class StreamViewModel(
 
     val bitmap = BitmapFactory.decodeByteArray(out, 0, out.size)
     _uiState.update { it.copy(videoFrame = bitmap) }
+    if (livePovEnabled && bitmap != null && nowMs - lastLivePovFrameAtMs >= LIVE_POV_MIN_FRAME_INTERVAL_MS) {
+      lastLivePovFrameAtMs = nowMs
+      livePovClient?.sendFrame(bitmap)
+    }
   }
 
   private fun encodeJpegBase64(bitmap: Bitmap, quality: Int): String =
