@@ -5,7 +5,7 @@
   "description": "Node WebSocket signaling server for CameraAccess live POV sharing",
   "main": "server.js",
   "scripts": {
-    "start": "/usr/local/bin/node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
