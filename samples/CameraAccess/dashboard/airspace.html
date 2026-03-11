@@ -298,7 +298,8 @@
     crossorigin=""
   ></script>
   <script>
-    const OPEN_SKY_BBOX = { lamin: 1.14, lomin: 103.47, lamax: 1.50, lomax: 104.15 };
+    // Wider default box to show more traffic around Singapore (aim: ~30+ aircraft when upstream provides it).
+    const OPEN_SKY_BBOX = { lamin: 0.50, lomin: 102.50, lamax: 2.20, lomax: 104.90 };
     const SIN_CENTER = [1.3521, 103.8198];
 
     const liveDot = document.getElementById("liveDot");
@@ -599,7 +600,7 @@
           lomin: String(OPEN_SKY_BBOX.lomin),
           lamax: String(OPEN_SKY_BBOX.lamax),
           lomax: String(OPEN_SKY_BBOX.lomax),
-          limit: "180",
+          limit: "250",
         });
         const res = await fetch(`/api/opensky?${query.toString()}`, { cache: "no-store" });
         const payload = await res.json();
@@ -611,13 +612,14 @@
           nextPollMs = pollFromApi;
         }
         stopSimulation();
-        const states = (payload.states || []).filter(isInboundFlight);
-        countEl.textContent = String(states.length);
+        const allStates = Array.isArray(payload.states) ? payload.states : [];
+        const states = allStates.filter(isInboundFlight);
+        countEl.textContent = String(allStates.length);
         modeEl.textContent = String(payload.authMode || "anonymous");
         pollEl.textContent = `${Math.round(nextPollMs / 1000)}s`;
         rateEl.textContent = payload.rateLimitRemaining ?? "-";
         updatedEl.textContent = new Date(payload.fetchedAtEpochMs || Date.now()).toLocaleTimeString();
-        renderFlights(states);
+        renderFlights(allStates);
         renderList(states);
         setConnection(true);
         if (!states.length) {
