@@ -457,9 +457,13 @@
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
         return false;
       }
+      const distanceKm = distanceToSingapore(lat, lon);
+      // "Inbound" heuristic: close enough to SIN and broadly heading toward the airport.
+      // (distanceToSingapore() returns km.)
+      const INBOUND_RADIUS_KM = 220;
       const track = Number(state?.trueTrack);
       if (!Number.isFinite(track)) {
-        return distanceToSingapore(lat, lon) < 0.28;
+        return distanceKm < INBOUND_RADIUS_KM;
       }
       const heading = ((track % 360) + 360) % 360;
       const dx = SIN_CENTER[0] - lat;
@@ -467,7 +471,7 @@
       const bearingToSin = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
       let delta = Math.abs(heading - bearingToSin);
       if (delta > 180) delta = 360 - delta;
-      return distanceToSingapore(lat, lon) < 0.36 && delta <= 75;
+      return distanceKm < INBOUND_RADIUS_KM && delta <= 75;
     }
 
     function buildSimulatedFlights() {
