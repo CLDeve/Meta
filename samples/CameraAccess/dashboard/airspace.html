@@ -250,9 +250,9 @@
   <div class="shell">
     <header class="panel topbar">
       <div>
-        <div class="eyebrow">Aviationstack Live / SIN Terminal Watch</div>
+        <div class="eyebrow">OpenSky Network / SIN Terminal Watch</div>
         <h1>Live Airspace Map</h1>
-        <p class="subtitle">Realtime aircraft positions using the dashboard’s Aviationstack proxy. Shows flights with live positions to/from Singapore (SIN) and plots them on a geographic map.</p>
+        <p class="subtitle">Realtime aircraft positions around Singapore using the local OpenSky proxy. The page polls the existing dashboard backend and plots live flights on a geographic map.</p>
       </div>
       <div class="actions">
         <a class="pill" href="/">Event Wall</a>
@@ -274,20 +274,11 @@
         <article class="panel module">
           <h2>Telemetry</h2>
           <div class="stats">
-            <div class="stat"><span>Flights tracked</span><strong id="count">0</strong></div>
-            <div class="stat"><span>Near SIN (live)</span><strong id="near">0</strong></div>
-            <div class="stat"><span>Arrivals (SIN)</span><strong id="arrivals">0</strong></div>
-            <div class="stat"><span>Departures (SIN)</span><strong id="departures">0</strong></div>
-            <div class="stat"><span>Data source</span><strong id="mode">aviationstack</strong></div>
-            <div class="stat"><span>Poll cadence</span><strong id="poll">30s</strong></div>
+            <div class="stat"><span>Flights in view</span><strong id="count">0</strong></div>
+            <div class="stat"><span>OpenSky mode</span><strong id="mode">idle</strong></div>
+            <div class="stat"><span>Poll cadence</span><strong id="poll">60s</strong></div>
+            <div class="stat"><span>Rate limit left</span><strong id="rate">-</strong></div>
             <div class="stat"><span>Last update</span><strong id="updated">--</strong></div>
-          </div>
-          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-            <label style="display:flex; gap:10px; align-items:center; color: var(--muted); font-size: 13px;">
-              <input id="nearOnly" type="checkbox" checked />
-              Show near SIN only
-            </label>
-            <span class="muted" style="font-size:12px;">Falls back to “all live to/from SIN” when nothing is nearby.</span>
           </div>
         </article>
 
@@ -307,21 +298,20 @@
     crossorigin=""
   ></script>
   <script>
+    const OPEN_SKY_BBOX = { lamin: 1.14, lomin: 103.47, lamax: 1.50, lomax: 104.15 };
     const SIN_CENTER = [1.3521, 103.8198];
 
     const liveDot = document.getElementById("liveDot");
     const conn = document.getElementById("conn");
     const countEl = document.getElementById("count");
-    const nearEl = document.getElementById("near");
-    const arrivalsEl = document.getElementById("arrivals");
-    const departuresEl = document.getElementById("departures");
     const modeEl = document.getElementById("mode");
     const pollEl = document.getElementById("poll");
+    const rateEl = document.getElementById("rate");
     const updatedEl = document.getElementById("updated");
     const flightList = document.getElementById("flightList");
-    const nearOnlyEl = document.getElementById("nearOnly");
-    const POLL_MS = 30_000;
-    const SIN_RADIUS_KM = 520;
+    const SIM_UPDATE_MS = 2000;
+    let simTimer = null;
+    let simulatedFlights = [];
 
     const map = L.map("map", {
       zoomControl: true,
@@ -333,8 +323,12 @@
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
 
-    L.circle(SIN_CENTER, {
-      radius: SIN_RADIUS_KM * 1000,
+    const bounds = L.latLngBounds(
+      [OPEN_SKY_BBOX.lamin, OPEN_SKY_BBOX.lomin],
+      [OPEN_SKY_BBOX.lamax, OPEN_SKY_BBOX.lomax]
+    );
+
+    L.rectangle(bounds, {
       color: "#61d7ff",
       weight: 1,
       fillOpacity: 0.02,
@@ -356,9 +350,9 @@
         .replaceAll("'", "&#39;");
     }
 
-    function planeIcon(track, onGround, kind) {
+    function planeIcon(track, onGround) {
       const heading = Number.isFinite(track) ? track : 0;
-      const color = onGround ? "#ff8b5e" : (kind === "arrival" ? "#67ffc7" : "#61d7ff");
+      const color = onGround ? "#ff8b5e" : "#ffd84d";
       return L.divIcon({
         className: "",
         html: `
@@ -398,14 +392,34 @@
       });
     }
 
-    function fmtAltitudeFeet(feet) {
-      if (!Number.isFinite(feet)) return "n/a";
-      return `${Math.round(feet).toLocaleString()} ft`;
+    function fmtAltitude(meters) {
+      if (!Number.isFinite(meters)) return "n/a";
+      return `${Math.round(meters * 3.28084).toLocaleString()} ft`;
     }
 
-    function fmtSpeedFromKmh(kmh) {
-      if (!Number.isFinite(kmh)) return "n/a";
-      return `${Math.round(kmh * 0.539957)} kt`;
+    function fmtSpeed(ms) {
+      if (!Number.isFinite(ms)) return "n/a";
+      return `${Math.round(ms * 1.94384)} kt`;
+    }
+
+    function randBetween(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function normalizeLon(lon) {
+      return lon < OPEN_SKY_BBOX.lomin
+        ? OPEN_SKY_BBOX.lomax
+        : lon > OPEN_SKY_BBOX.lomax
+          ? OPEN_SKY_BBOX.lomin
+          : lon;
+    }
+
+    function normalizeLat(lat) {
+      return lat < OPEN_SKY_BBOX.lamin
+        ? OPEN_SKY_BBOX.lamax
+        : lat > OPEN_SKY_BBOX.lamax
+          ? OPEN_SKY_BBOX.lamin
+          : lat;
     }
 
     function distanceToSingapore(lat, lon) {
@@ -416,15 +430,15 @@
       return Math.sqrt((dx * dx) + (dy * dy));
     }
 
-    function etaMinutesFromKmh(state) {
+    function etaMinutes(state) {
       const lat = Number(state?.latitude);
       const lon = Number(state?.longitude);
-      const speedKmh = Number(state?.speedKmh);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(speedKmh) || speedKmh <= 0) {
+      const speedMs = Number(state?.velocity);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(speedMs) || speedMs <= 0) {
         return null;
       }
       const distanceKm = distanceToSingapore(lat, lon);
-      const speedKmPerMin = speedKmh / 60;
+      const speedKmPerMin = (speedMs * 3.6) / 60;
       if (speedKmPerMin <= 0) {
         return null;
       }
@@ -432,82 +446,120 @@
     }
 
     function fmtEta(state) {
-      const mins = etaMinutesFromKmh(state);
+      const mins = etaMinutes(state);
       if (!Number.isFinite(mins)) return "n/a";
       return `${mins} min`;
     }
 
-    function isWithinSinRadius(state) {
+    function isInboundFlight(state) {
       const lat = Number(state?.latitude);
       const lon = Number(state?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
-      return distanceToSingapore(lat, lon) <= SIN_RADIUS_KM;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return false;
+      }
+      const track = Number(state?.trueTrack);
+      if (!Number.isFinite(track)) {
+        return distanceToSingapore(lat, lon) < 0.28;
+      }
+      const heading = ((track % 360) + 360) % 360;
+      const dx = SIN_CENTER[0] - lat;
+      const dy = SIN_CENTER[1] - lon;
+      const bearingToSin = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+      let delta = Math.abs(heading - bearingToSin);
+      if (delta > 180) delta = 360 - delta;
+      return distanceToSingapore(lat, lon) < 0.36 && delta <= 75;
     }
 
-    function renderList(states, banner) {
-      const items = Array.isArray(states) ? states.slice(0, 25) : [];
+    function buildSimulatedFlights() {
+      return [
+        { callsign: "SQ318", originCountry: "Singapore", latitude: 1.18, longitude: 103.58, trueTrack: 34, velocity: 215, baroAltitude: 2300, onGround: false },
+        { callsign: "TR512", originCountry: "Singapore", latitude: 1.47, longitude: 103.66, trueTrack: 158, velocity: 205, baroAltitude: 1850, onGround: false },
+        { callsign: "MH602", originCountry: "Malaysia", latitude: 1.32, longitude: 103.50, trueTrack: 79, velocity: 228, baroAltitude: 2900, onGround: false },
+        { callsign: "QZ507", originCountry: "Indonesia", latitude: 1.46, longitude: 104.05, trueTrack: 244, velocity: 212, baroAltitude: 2500, onGround: false },
+        { callsign: "AK719", originCountry: "Malaysia", latitude: 1.23, longitude: 104.08, trueTrack: 306, velocity: 220, baroAltitude: 3400, onGround: false },
+        { callsign: "CX734", originCountry: "Hong Kong", latitude: 1.42, longitude: 103.93, trueTrack: 204, velocity: 190, baroAltitude: 1400, onGround: false },
+      ];
+    }
+
+    function tickSimulation() {
+      simulatedFlights = simulatedFlights.map((flight) => {
+        const heading = (Number(flight.trueTrack) || 0) * (Math.PI / 180);
+        const speedMs = Number(flight.velocity) || 200;
+        const distanceKm = (speedMs * (SIM_UPDATE_MS / 1000)) / 1000;
+        const latStep = (Math.cos(heading) * distanceKm) / 111.32 + randBetween(-0.00015, 0.00015);
+        const lonScale = 111.32 * Math.cos((Number(flight.latitude) * Math.PI) / 180);
+        const lonStep =
+          ((Math.sin(heading) * distanceKm) / Math.max(1, lonScale)) + randBetween(-0.00015, 0.00015);
+        return {
+          ...flight,
+          latitude: normalizeLat(flight.latitude + latStep),
+          longitude: normalizeLon(flight.longitude + lonStep),
+          trueTrack: (Number(flight.trueTrack) + randBetween(-2.5, 2.5) + 360) % 360,
+          baroAltitude: Math.max(900, Number(flight.baroAltitude) + randBetween(-45, 20)),
+          velocity: Math.max(150, Number(flight.velocity) + randBetween(-4, 4)),
+        };
+      });
+      renderFlights(simulatedFlights);
+      renderList(simulatedFlights);
+      countEl.textContent = String(simulatedFlights.length);
+      updatedEl.textContent = new Date().toLocaleTimeString();
+    }
+
+    function startSimulation(reason) {
+      if (!simulatedFlights.length) {
+        simulatedFlights = buildSimulatedFlights();
+      }
+      modeEl.textContent = "simulated";
+      pollEl.textContent = `${Math.round(SIM_UPDATE_MS / 1000)}s`;
+      rateEl.textContent = "-";
+      setConnection(true);
+      tickSimulation();
+      const firstItem = flightList.querySelector("li");
+      if (firstItem && firstItem.classList.contains("warn")) {
+        firstItem.remove();
+      }
+      if (simTimer == null) {
+        simTimer = window.setInterval(tickSimulation, SIM_UPDATE_MS);
+      }
+      flightList.insertAdjacentHTML(
+        "afterbegin",
+        `<li class="warn">${escapeHtml(reason)}</li>`
+      );
+    }
+
+    function stopSimulation() {
+      if (simTimer != null) {
+        window.clearInterval(simTimer);
+        simTimer = null;
+      }
+    }
+
+    function renderList(states) {
+      const items = Array.isArray(states) ? states.filter(isInboundFlight).slice(0, 25) : [];
       if (!items.length) {
-        flightList.innerHTML = "<li>No flights with live positions found right now.</li>";
+        flightList.innerHTML = "<li>No inbound flights detected in the current map window.</li>";
         return;
       }
-      const bannerHtml = banner ? `<li class="warn">${escapeHtml(banner)}</li>` : "";
-      flightList.innerHTML = bannerHtml + items.map((state) => {
-        const callsign = state.callsign || "unknown";
-        const altitude = fmtAltitudeFeet(Number(state.altitudeFt));
-        const speed = fmtSpeedFromKmh(Number(state.speedKmh));
-        const origin = state.airline || "Unknown";
+      flightList.innerHTML = items.map((state) => {
+        const callsign = state.callsign || state.icao24 || "unknown";
+        const altitude = fmtAltitude(Number(state.baroAltitude ?? state.geoAltitude));
+        const speed = fmtSpeed(Number(state.velocity));
+        const origin = state.originCountry || "Unknown";
         const eta = fmtEta(state);
-        const kindLabel = state.kind === "arrival" ? "ARR" : "DEP";
         return `
           <li>
-            <strong>${escapeHtml(callsign)} <span class="muted">(${escapeHtml(kindLabel)})</span></strong>
-            <span class="muted">${escapeHtml(state.route || "")}</span>
-            <span class="muted">${escapeHtml(origin)} • ${escapeHtml(state.status || "n/a")}</span>
-            <span>Gate: ${escapeHtml(state.arrGate || "-")} • Alt: ${escapeHtml(altitude)} • Spd: ${escapeHtml(speed)}</span>
-            <span>ETA to SIN: ${escapeHtml(eta)} • Updated: ${escapeHtml(state.liveUpdated || "n/a")}</span>
+            <strong>${escapeHtml(callsign)}</strong>
+            <span class="muted">${escapeHtml(origin)}</span>
+            <span>Altitude: ${escapeHtml(altitude)} • Speed: ${escapeHtml(speed)}</span>
+            <span>Estimated landing: ${escapeHtml(eta)}</span>
           </li>
         `;
       }).join("");
     }
 
-    function renderScheduledList(arrivalsRows, departuresRows, reason) {
-      const a = Array.isArray(arrivalsRows) ? arrivalsRows.slice(0, 12) : [];
-      const d = Array.isArray(departuresRows) ? departuresRows.slice(0, 12) : [];
-      const items = [];
-      for (const row of a) items.push({ kind: "ARR", row });
-      for (const row of d) items.push({ kind: "DEP", row });
-      if (!items.length) {
-        flightList.innerHTML = `<li class="warn">${escapeHtml(reason || "No flights returned from Aviationstack.")}</li>`;
-        return;
-      }
-      flightList.innerHTML =
-        `<li class="warn">${escapeHtml(reason || "No live positions available. Showing scheduled flights.")}</li>` +
-        items.map(({ kind, row }) => {
-          const flight = row?.flight || {};
-          const airline = row?.airline || {};
-          const dep = row?.departure || {};
-          const arr = row?.arrival || {};
-          const callsign = String(flight?.iata || flight?.icao || flight?.number || "unknown");
-          const route = `${dep?.iata || dep?.airport || "?"} → ${arr?.iata || arr?.airport || "?"}`;
-          const status = String(row?.flight_status || "n/a");
-          const gate = kind === "ARR" ? (arr?.gate || "-") : (dep?.gate || "-");
-          const sched = (kind === "ARR" ? arr?.scheduled : dep?.scheduled) || "";
-          const est = (kind === "ARR" ? arr?.estimated : dep?.estimated) || "";
-          const times = [sched && `sched ${sched}`, est && `est ${est}`].filter(Boolean).join(" • ");
-          return `
-            <li>
-              <strong>${escapeHtml(callsign)} <span class="muted">(${escapeHtml(kind)})</span></strong>
-              <span class="muted">${escapeHtml(airline?.name || airline?.iata || "")} • ${escapeHtml(status)}</span>
-              <span>${escapeHtml(route)}</span>
-              <span class="muted">Gate: ${escapeHtml(gate)} • ${escapeHtml(times || "time n/a")}</span>
-            </li>
-          `;
-        }).join("");
-    }
-
     function renderFlights(states) {
       flightsLayer.clearLayers();
-      const items = Array.isArray(states) ? states : [];
+      const items = Array.isArray(states) ? states.filter(isInboundFlight) : [];
       for (const state of items) {
         const lat = Number(state?.latitude);
         const lon = Number(state?.longitude);
@@ -515,167 +567,65 @@
           continue;
         }
         const marker = L.marker([lat, lon], {
-          icon: planeIcon(Number(state?.trueTrack), Boolean(state?.onGround), state?.kind),
+          icon: planeIcon(Number(state?.trueTrack), Boolean(state?.onGround)),
           keyboard: false,
         });
-        const callsign = state?.callsign || "unknown";
-        const altitude = fmtAltitudeFeet(Number(state?.altitudeFt));
-        const speed = fmtSpeedFromKmh(Number(state?.speedKmh));
+        const callsign = state?.callsign || state?.icao24 || "unknown";
+        const altitude = fmtAltitude(Number(state?.baroAltitude ?? state?.geoAltitude));
+        const speed = fmtSpeed(Number(state?.velocity));
         const heading = Number.isFinite(Number(state?.trueTrack)) ? `${Math.round(Number(state.trueTrack))}°` : "n/a";
-        const eta = state?.kind === "arrival" ? fmtEta(state) : "n/a";
+        const eta = fmtEta(state);
         marker.bindPopup(`
           <strong>${escapeHtml(callsign)}</strong><br/>
-          Route: ${escapeHtml(state?.route || "n/a")}<br/>
-          Airline: ${escapeHtml(state?.airline || "Unknown")}<br/>
-          Status: ${escapeHtml(state?.status || "n/a")}<br/>
-          Gates: ${escapeHtml(state?.depGate || "-")} → ${escapeHtml(state?.arrGate || "-")}<br/>
+          Country: ${escapeHtml(state?.originCountry || "Unknown")}<br/>
           Altitude: ${escapeHtml(altitude)}<br/>
           Speed: ${escapeHtml(speed)}<br/>
           Track: ${escapeHtml(heading)}<br/>
-          ETA to SIN: ${escapeHtml(eta)}<br/>
-          Live updated: ${escapeHtml(state?.liveUpdated || "n/a")}
+          Estimated landing: ${escapeHtml(eta)}
         `);
         flightsLayer.addLayer(marker);
       }
     }
 
-    function fitToStates(states) {
-      const coords = (Array.isArray(states) ? states : [])
-        .map((s) => [Number(s?.latitude), Number(s?.longitude)])
-        .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
-      if (!coords.length) return;
-      const bounds = L.latLngBounds(coords.map(([lat, lon]) => L.latLng(lat, lon)));
-      map.fitBounds(bounds, { padding: [22, 22], maxZoom: 7 });
-    }
-
-    function aviationRowToState(row, kind) {
-      const live = row?.live || null;
-      const lat = Number(live?.latitude);
-      const lon = Number(live?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-
-      const flight = row?.flight || {};
-      const airline = row?.airline || {};
-      const departure = row?.departure || {};
-      const arrival = row?.arrival || {};
-      const callsign = flight?.iata || flight?.icao || (flight?.number ? String(flight.number) : "");
-      const route = `${departure?.iata || departure?.airport || "?"} → ${arrival?.iata || arrival?.airport || "?"}`;
-
-      return {
-        kind,
-        callsign: String(callsign || "").trim() || "unknown",
-        airline: String(airline?.name || airline?.iata || "").trim(),
-        route,
-        status: String(row?.flight_status || "").trim(),
-        depGate: departure?.gate ? String(departure.gate) : "",
-        arrGate: arrival?.gate ? String(arrival.gate) : "",
-        latitude: lat,
-        longitude: lon,
-        distanceKm: distanceToSingapore(lat, lon),
-        trueTrack: Number(live?.direction),
-        speedKmh: Number(live?.speed_horizontal),
-        altitudeFt: Number(live?.altitude),
-        onGround: Boolean(live?.is_ground),
-        liveUpdated: live?.updated ? String(live.updated) : "",
-      };
-    }
-
-    async function fetchAviationstackFlights() {
-      const limit = 100;
-      const [arrivalsResp, departuresResp] = await Promise.all([
-        fetch(`/api/aviationstack/flights?arr_iata=SIN&limit=${limit}`, { cache: "no-store" }),
-        fetch(`/api/aviationstack/flights?dep_iata=SIN&limit=${limit}`, { cache: "no-store" }),
-      ]);
-
-      const arrivalsPayload = await arrivalsResp.json();
-      const departuresPayload = await departuresResp.json();
-
-      if (!arrivalsResp.ok || !arrivalsPayload?.ok) {
-        throw new Error(arrivalsPayload?.error || ("Arrivals HTTP " + arrivalsResp.status));
-      }
-      if (!departuresResp.ok || !departuresPayload?.ok) {
-        throw new Error(departuresPayload?.error || ("Departures HTTP " + departuresResp.status));
-      }
-
-      const arrivalsRows = Array.isArray(arrivalsPayload?.data?.data) ? arrivalsPayload.data.data : [];
-      const departuresRows = Array.isArray(departuresPayload?.data?.data) ? departuresPayload.data.data : [];
-
-      const states = [];
-      const seen = new Set();
-      for (const row of arrivalsRows) {
-        const flightKey = String(row?.flight?.iata || row?.flight?.icao || row?.flight?.number || "");
-        const key = `A|${flightKey}|${String(row?.flight_date || "")}|${String(row?.departure?.iata || "")}|${String(row?.arrival?.iata || "")}`;
-        if (seen.has(key)) continue;
-        const state = aviationRowToState(row, "arrival");
-        if (state) {
-          seen.add(key);
-          states.push(state);
-        }
-      }
-      for (const row of departuresRows) {
-        const flightKey = String(row?.flight?.iata || row?.flight?.icao || row?.flight?.number || "");
-        const key = `D|${flightKey}|${String(row?.flight_date || "")}|${String(row?.departure?.iata || "")}|${String(row?.arrival?.iata || "")}`;
-        if (seen.has(key)) continue;
-        const state = aviationRowToState(row, "departure");
-        if (state) {
-          seen.add(key);
-          states.push(state);
-        }
-      }
-
-      return {
-        arrivalsWithLive: states.filter((s) => s.kind === "arrival").length,
-        departuresWithLive: states.filter((s) => s.kind === "departure").length,
-        states,
-        arrivalsRows,
-        departuresRows,
-      };
-    }
-
     async function pollFlights() {
+      let nextPollMs = 60_000;
       try {
-        modeEl.textContent = "aviationstack";
-        pollEl.textContent = `${Math.round(POLL_MS / 1000)}s`;
-
-        const result = await fetchAviationstackFlights();
-        const allStates = result.states;
-        const nearStates = allStates.filter((s) => Number(s?.distanceKm) <= SIN_RADIUS_KM);
-        const arrivalsTotal = Array.isArray(result.arrivalsRows) ? result.arrivalsRows.length : 0;
-        const departuresTotal = Array.isArray(result.departuresRows) ? result.departuresRows.length : 0;
-
-        const wantsNearOnly = Boolean(nearOnlyEl?.checked);
-        let statesToShow = wantsNearOnly ? nearStates : allStates;
-        let banner = "";
-        if (wantsNearOnly && !statesToShow.length && allStates.length) {
-          statesToShow = allStates;
-          banner = `No live positions found near SIN (within ${SIN_RADIUS_KM}km). Showing all live flights to/from SIN instead.`;
+        const query = new URLSearchParams({
+          lamin: String(OPEN_SKY_BBOX.lamin),
+          lomin: String(OPEN_SKY_BBOX.lomin),
+          lamax: String(OPEN_SKY_BBOX.lamax),
+          lomax: String(OPEN_SKY_BBOX.lomax),
+          limit: "180",
+        });
+        const res = await fetch(`/api/opensky?${query.toString()}`, { cache: "no-store" });
+        const payload = await res.json();
+        if (!res.ok || !payload?.ok) {
+          throw new Error(payload?.error || ("HTTP " + res.status));
         }
-
-        countEl.textContent = String(statesToShow.length);
-        nearEl.textContent = String(nearStates.length);
-        arrivalsEl.textContent = `${result.arrivalsWithLive}/${arrivalsTotal}`;
-        departuresEl.textContent = `${result.departuresWithLive}/${departuresTotal}`;
-        updatedEl.textContent = new Date().toLocaleTimeString();
-        renderFlights(statesToShow);
-        renderList(statesToShow, banner);
+        const pollFromApi = Number(payload.recommendedPollMs);
+        if (Number.isFinite(pollFromApi) && pollFromApi > 0) {
+          nextPollMs = pollFromApi;
+        }
+        stopSimulation();
+        const states = (payload.states || []).filter(isInboundFlight);
+        countEl.textContent = String(states.length);
+        modeEl.textContent = String(payload.authMode || "anonymous");
+        pollEl.textContent = `${Math.round(nextPollMs / 1000)}s`;
+        rateEl.textContent = payload.rateLimitRemaining ?? "-";
+        updatedEl.textContent = new Date(payload.fetchedAtEpochMs || Date.now()).toLocaleTimeString();
+        renderFlights(states);
+        renderList(states);
         setConnection(true);
-        if (!statesToShow.length) {
-          renderScheduledList(result.arrivalsRows, result.departuresRows, "No flights with live positions returned. Showing scheduled flights (no map positions).");
-        } else if (!wantsNearOnly) {
-          fitToStates(statesToShow);
+        if (!states.length) {
+          startSimulation("No live flights returned. Showing simulated traffic.");
         }
       } catch (error) {
-        setConnection(false);
-        modeEl.textContent = "aviationstack";
-        flightList.innerHTML = `<li class="danger">Aviationstack unavailable: ${escapeHtml(error instanceof Error ? error.message : "unknown error")}</li>`;
+        startSimulation(`Live OpenSky unavailable. Showing simulated traffic. ${error instanceof Error ? error.message : "unknown error"}`);
       } finally {
-        window.setTimeout(pollFlights, POLL_MS);
+        window.setTimeout(pollFlights, nextPollMs);
       }
     }
 
-    if (nearOnlyEl) {
-      nearOnlyEl.addEventListener("change", () => pollFlights());
-    }
     pollFlights();
   </script>
 </body>
