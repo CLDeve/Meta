@@ -212,15 +212,15 @@
     }
 
     .plane-marker {
-      width: 30px;
-      height: 30px;
+      width: 28px;
+      height: 28px;
       transform-origin: center;
-      filter: drop-shadow(0 0 14px rgba(255, 215, 64, 0.75));
+      filter: drop-shadow(0 0 12px rgba(97, 215, 255, 0.55));
     }
 
     .plane-marker svg {
-      width: 30px;
-      height: 30px;
+      width: 28px;
+      height: 28px;
       display: block;
     }
 
@@ -353,30 +353,25 @@
 
     function planeIcon(track, onGround, inbound) {
       const heading = Number.isFinite(track) ? track : 0;
-      const color = onGround ? "#ff8b5e" : (inbound ? "#67ffc7" : "#ffd84d");
+      const fill = onGround ? "#ff8b5e" : (inbound ? "#67ffc7" : "#61d7ff");
+      const stroke = "rgba(10, 18, 32, 0.9)";
       return L.divIcon({
         className: "",
         html: `
           <div class="plane-marker" style="transform: rotate(${heading}deg);">
-            <svg viewBox="0 0 64 64" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
-                fill="${color}"
-                stroke="#102033"
-                stroke-width="2.2"
+                fill="${fill}"
+                stroke="${stroke}"
+                stroke-width="0.9"
                 stroke-linejoin="round"
-                d="M32 4
-                   L44 44
-                   L34 40
-                   L32 60
-                   L30 40
-                   L20 44
-                   Z"
+                d="M21 16v-2l-8-5V3.5c0-.8-.7-1.5-1.5-1.5S10 2.7 10 3.5V9L2 14v2l8-2.5V19l-2 1.5V22l3-1 3 1v-1.5L13 19v-5.5L21 16z"
               />
             </svg>
           </div>
         `,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
       });
     }
 
