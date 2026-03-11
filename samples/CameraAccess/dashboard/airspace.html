@@ -351,9 +351,9 @@
         .replaceAll("'", "&#39;");
     }
 
-    function planeIcon(track, onGround) {
+    function planeIcon(track, onGround, inbound) {
       const heading = Number.isFinite(track) ? track : 0;
-      const color = onGround ? "#ff8b5e" : "#ffd84d";
+      const color = onGround ? "#ff8b5e" : (inbound ? "#67ffc7" : "#ffd84d");
       return L.divIcon({
         className: "",
         html: `
@@ -364,25 +364,12 @@
                 stroke="#102033"
                 stroke-width="2.2"
                 stroke-linejoin="round"
-                d="M32 3
-                   L39 18
-                   L54 22
-                   L54 29
-                   L39 28
-                   L35 36
-                   L47 42
-                   L47 49
-                   L34 46
-                   L34 60
-                   L30 60
-                   L30 46
-                   L17 49
-                   L17 42
-                   L29 36
-                   L25 28
-                   L10 29
-                   L10 22
-                   L25 18
+                d="M32 4
+                   L44 44
+                   L34 40
+                   L32 60
+                   L30 40
+                   L20 44
                    Z"
               />
             </svg>
@@ -562,33 +549,94 @@
       }).join("");
     }
 
+    const markersByKey = new Map();
+
+    function markerKey(state) {
+      const key = String(state?.icao24 || "").trim();
+      if (key) return key;
+      const callsign = String(state?.callsign || "").trim();
+      if (callsign) return callsign;
+      return "";
+    }
+
+    function setMarkerHeading(marker, headingDeg) {
+      const el = marker.getElement();
+      if (!el) return;
+      const inner = el.querySelector(".plane-marker");
+      if (!inner) return;
+      inner.style.transform = `rotate(${headingDeg}deg)`;
+    }
+
+    function animateMarkerLatLng(marker, from, to, durationMs) {
+      const token = (marker.__animToken || 0) + 1;
+      marker.__animToken = token;
+      const start = performance.now();
+
+      function step(now) {
+        if (marker.__animToken !== token) return;
+        const t = Math.min(1, (now - start) / durationMs);
+        const lat = from.lat + (to.lat - from.lat) * t;
+        const lng = from.lng + (to.lng - from.lng) * t;
+        marker.setLatLng([lat, lng]);
+        if (t < 1) {
+          requestAnimationFrame(step);
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
     function renderFlights(states) {
-      flightsLayer.clearLayers();
-      const items = Array.isArray(states) ? states.filter(isInboundFlight) : [];
+      const items = Array.isArray(states) ? states : [];
+      const seen = new Set();
+
       for (const state of items) {
+        const key = markerKey(state);
+        if (!key) continue;
         const lat = Number(state?.latitude);
         const lon = Number(state?.longitude);
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
           continue;
         }
-        const marker = L.marker([lat, lon], {
-          icon: planeIcon(Number(state?.trueTrack), Boolean(state?.onGround)),
-          keyboard: false,
-        });
+        seen.add(key);
+        const inbound = isInboundFlight(state);
+        const headingVal = Number(state?.trueTrack);
+        const heading = Number.isFinite(headingVal) ? ((headingVal % 360) + 360) % 360 : 0;
+
+        let marker = markersByKey.get(key);
+        if (!marker) {
+          marker = L.marker([lat, lon], {
+            icon: planeIcon(heading, Boolean(state?.onGround), inbound),
+            keyboard: false,
+          });
+          marker.addTo(flightsLayer);
+          markersByKey.set(key, marker);
+        } else {
+          const current = marker.getLatLng();
+          const target = L.latLng(lat, lon);
+          animateMarkerLatLng(marker, current, target, 900);
+          marker.setIcon(planeIcon(heading, Boolean(state?.onGround), inbound));
+        }
+        setMarkerHeading(marker, heading);
+
         const callsign = state?.callsign || state?.icao24 || "unknown";
         const altitude = fmtAltitude(Number(state?.baroAltitude ?? state?.geoAltitude));
         const speed = fmtSpeed(Number(state?.velocity));
-        const heading = Number.isFinite(Number(state?.trueTrack)) ? `${Math.round(Number(state.trueTrack))}°` : "n/a";
+        const headingText = Number.isFinite(Number(state?.trueTrack)) ? `${Math.round(Number(state.trueTrack))}°` : "n/a";
         const eta = fmtEta(state);
         marker.bindPopup(`
           <strong>${escapeHtml(callsign)}</strong><br/>
           Country: ${escapeHtml(state?.originCountry || "Unknown")}<br/>
           Altitude: ${escapeHtml(altitude)}<br/>
           Speed: ${escapeHtml(speed)}<br/>
-          Track: ${escapeHtml(heading)}<br/>
+          Track: ${escapeHtml(headingText)}<br/>
           Estimated landing: ${escapeHtml(eta)}
         `);
-        flightsLayer.addLayer(marker);
+      }
+
+      for (const [key, marker] of markersByKey.entries()) {
+        if (seen.has(key)) continue;
+        flightsLayer.removeLayer(marker);
+        markersByKey.delete(key);
       }
     }
 
