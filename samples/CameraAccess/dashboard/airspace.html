@@ -275,11 +275,19 @@
           <h2>Telemetry</h2>
           <div class="stats">
             <div class="stat"><span>Flights tracked</span><strong id="count">0</strong></div>
+            <div class="stat"><span>Near SIN (live)</span><strong id="near">0</strong></div>
             <div class="stat"><span>Arrivals (SIN)</span><strong id="arrivals">0</strong></div>
             <div class="stat"><span>Departures (SIN)</span><strong id="departures">0</strong></div>
             <div class="stat"><span>Data source</span><strong id="mode">aviationstack</strong></div>
             <div class="stat"><span>Poll cadence</span><strong id="poll">30s</strong></div>
             <div class="stat"><span>Last update</span><strong id="updated">--</strong></div>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <label style="display:flex; gap:10px; align-items:center; color: var(--muted); font-size: 13px;">
+              <input id="nearOnly" type="checkbox" checked />
+              Show near SIN only
+            </label>
+            <span class="muted" style="font-size:12px;">Falls back to “all live to/from SIN” when nothing is nearby.</span>
           </div>
         </article>
 
@@ -304,12 +312,14 @@
     const liveDot = document.getElementById("liveDot");
     const conn = document.getElementById("conn");
     const countEl = document.getElementById("count");
+    const nearEl = document.getElementById("near");
     const arrivalsEl = document.getElementById("arrivals");
     const departuresEl = document.getElementById("departures");
     const modeEl = document.getElementById("mode");
     const pollEl = document.getElementById("poll");
     const updatedEl = document.getElementById("updated");
     const flightList = document.getElementById("flightList");
+    const nearOnlyEl = document.getElementById("nearOnly");
     const POLL_MS = 30_000;
     const SIN_RADIUS_KM = 520;
 
@@ -434,23 +444,23 @@
       return distanceToSingapore(lat, lon) <= SIN_RADIUS_KM;
     }
 
-    function renderList(states) {
-      const items = Array.isArray(states)
-        ? states.filter((s) => isWithinSinRadius(s) && s.kind === "arrival").slice(0, 25)
-        : [];
+    function renderList(states, banner) {
+      const items = Array.isArray(states) ? states.slice(0, 25) : [];
       if (!items.length) {
-        flightList.innerHTML = "<li>No arrivals with live positions found right now.</li>";
+        flightList.innerHTML = "<li>No flights with live positions found right now.</li>";
         return;
       }
-      flightList.innerHTML = items.map((state) => {
+      const bannerHtml = banner ? `<li class="warn">${escapeHtml(banner)}</li>` : "";
+      flightList.innerHTML = bannerHtml + items.map((state) => {
         const callsign = state.callsign || "unknown";
         const altitude = fmtAltitudeFeet(Number(state.altitudeFt));
         const speed = fmtSpeedFromKmh(Number(state.speedKmh));
         const origin = state.airline || "Unknown";
         const eta = fmtEta(state);
+        const kindLabel = state.kind === "arrival" ? "ARR" : "DEP";
         return `
           <li>
-            <strong>${escapeHtml(callsign)}</strong>
+            <strong>${escapeHtml(callsign)} <span class="muted">(${escapeHtml(kindLabel)})</span></strong>
             <span class="muted">${escapeHtml(state.route || "")}</span>
             <span class="muted">${escapeHtml(origin)} • ${escapeHtml(state.status || "n/a")}</span>
             <span>Gate: ${escapeHtml(state.arrGate || "-")} • Alt: ${escapeHtml(altitude)} • Spd: ${escapeHtml(speed)}</span>
@@ -460,9 +470,44 @@
       }).join("");
     }
 
+    function renderScheduledList(arrivalsRows, departuresRows, reason) {
+      const a = Array.isArray(arrivalsRows) ? arrivalsRows.slice(0, 12) : [];
+      const d = Array.isArray(departuresRows) ? departuresRows.slice(0, 12) : [];
+      const items = [];
+      for (const row of a) items.push({ kind: "ARR", row });
+      for (const row of d) items.push({ kind: "DEP", row });
+      if (!items.length) {
+        flightList.innerHTML = `<li class="warn">${escapeHtml(reason || "No flights returned from Aviationstack.")}</li>`;
+        return;
+      }
+      flightList.innerHTML =
+        `<li class="warn">${escapeHtml(reason || "No live positions available. Showing scheduled flights.")}</li>` +
+        items.map(({ kind, row }) => {
+          const flight = row?.flight || {};
+          const airline = row?.airline || {};
+          const dep = row?.departure || {};
+          const arr = row?.arrival || {};
+          const callsign = String(flight?.iata || flight?.icao || flight?.number || "unknown");
+          const route = `${dep?.iata || dep?.airport || "?"} → ${arr?.iata || arr?.airport || "?"}`;
+          const status = String(row?.flight_status || "n/a");
+          const gate = kind === "ARR" ? (arr?.gate || "-") : (dep?.gate || "-");
+          const sched = (kind === "ARR" ? arr?.scheduled : dep?.scheduled) || "";
+          const est = (kind === "ARR" ? arr?.estimated : dep?.estimated) || "";
+          const times = [sched && `sched ${sched}`, est && `est ${est}`].filter(Boolean).join(" • ");
+          return `
+            <li>
+              <strong>${escapeHtml(callsign)} <span class="muted">(${escapeHtml(kind)})</span></strong>
+              <span class="muted">${escapeHtml(airline?.name || airline?.iata || "")} • ${escapeHtml(status)}</span>
+              <span>${escapeHtml(route)}</span>
+              <span class="muted">Gate: ${escapeHtml(gate)} • ${escapeHtml(times || "time n/a")}</span>
+            </li>
+          `;
+        }).join("");
+    }
+
     function renderFlights(states) {
       flightsLayer.clearLayers();
-      const items = Array.isArray(states) ? states.filter(isWithinSinRadius) : [];
+      const items = Array.isArray(states) ? states : [];
       for (const state of items) {
         const lat = Number(state?.latitude);
         const lon = Number(state?.longitude);
@@ -494,6 +539,15 @@
       }
     }
 
+    function fitToStates(states) {
+      const coords = (Array.isArray(states) ? states : [])
+        .map((s) => [Number(s?.latitude), Number(s?.longitude)])
+        .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
+      if (!coords.length) return;
+      const bounds = L.latLngBounds(coords.map(([lat, lon]) => L.latLng(lat, lon)));
+      map.fitBounds(bounds, { padding: [22, 22], maxZoom: 7 });
+    }
+
     function aviationRowToState(row, kind) {
       const live = row?.live || null;
       const lat = Number(live?.latitude);
@@ -517,6 +571,7 @@
         arrGate: arrival?.gate ? String(arrival.gate) : "",
         latitude: lat,
         longitude: lon,
+        distanceKm: distanceToSingapore(lat, lon),
         trueTrack: Number(live?.direction),
         speedKmh: Number(live?.speed_horizontal),
         altitudeFt: Number(live?.altitude),
@@ -572,6 +627,8 @@
         arrivalsWithLive: states.filter((s) => s.kind === "arrival").length,
         departuresWithLive: states.filter((s) => s.kind === "departure").length,
         states,
+        arrivalsRows,
+        departuresRows,
       };
     }
 
@@ -581,17 +638,31 @@
         pollEl.textContent = `${Math.round(POLL_MS / 1000)}s`;
 
         const result = await fetchAviationstackFlights();
-        const states = result.states;
-        const filtered = states.filter(isWithinSinRadius);
-        countEl.textContent = String(filtered.length);
-        arrivalsEl.textContent = String(result.arrivalsWithLive);
-        departuresEl.textContent = String(result.departuresWithLive);
+        const allStates = result.states;
+        const nearStates = allStates.filter((s) => Number(s?.distanceKm) <= SIN_RADIUS_KM);
+        const arrivalsTotal = Array.isArray(result.arrivalsRows) ? result.arrivalsRows.length : 0;
+        const departuresTotal = Array.isArray(result.departuresRows) ? result.departuresRows.length : 0;
+
+        const wantsNearOnly = Boolean(nearOnlyEl?.checked);
+        let statesToShow = wantsNearOnly ? nearStates : allStates;
+        let banner = "";
+        if (wantsNearOnly && !statesToShow.length && allStates.length) {
+          statesToShow = allStates;
+          banner = `No live positions found near SIN (within ${SIN_RADIUS_KM}km). Showing all live flights to/from SIN instead.`;
+        }
+
+        countEl.textContent = String(statesToShow.length);
+        nearEl.textContent = String(nearStates.length);
+        arrivalsEl.textContent = `${result.arrivalsWithLive}/${arrivalsTotal}`;
+        departuresEl.textContent = `${result.departuresWithLive}/${departuresTotal}`;
         updatedEl.textContent = new Date().toLocaleTimeString();
-        renderFlights(states);
-        renderList(states);
+        renderFlights(statesToShow);
+        renderList(statesToShow, banner);
         setConnection(true);
-        if (!filtered.length) {
-          flightList.innerHTML = "<li class=\"warn\">No flights with live positions found near SIN right now. Try again later.</li>";
+        if (!statesToShow.length) {
+          renderScheduledList(result.arrivalsRows, result.departuresRows, "No flights with live positions returned. Showing scheduled flights (no map positions).");
+        } else if (!wantsNearOnly) {
+          fitToStates(statesToShow);
         }
       } catch (error) {
         setConnection(false);
@@ -602,6 +673,9 @@
       }
     }
 
+    if (nearOnlyEl) {
+      nearOnlyEl.addEventListener("change", () => pollFlights());
+    }
     pollFlights();
   </script>
 </body>
