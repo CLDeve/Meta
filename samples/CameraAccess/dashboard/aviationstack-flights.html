@@ -150,6 +150,7 @@
               <th class="nowrap">Flight</th>
               <th class="hide-sm">Airline</th>
               <th>Route</th>
+              <th class="nowrap">Gates</th>
               <th class="hide-sm">Times</th>
               <th>Status</th>
               <th class="hide-sm">Aircraft</th>
@@ -212,6 +213,9 @@
         const dep = pick(item, ["departure", "iata"]) || pick(item, ["departure", "airport"]) || "";
         const arr = pick(item, ["arrival", "iata"]) || pick(item, ["arrival", "airport"]) || "";
         const route = `${dep} → ${arr}`.trim();
+        const depGate = pick(item, ["departure", "gate"]) || "";
+        const arrGate = pick(item, ["arrival", "gate"]) || "";
+        const gates = `${depGate || "-"} → ${arrGate || "-"}`;
         const sched = pick(item, ["departure", "scheduled"]) || "";
         const est = pick(item, ["departure", "estimated"]) || "";
         const status = item.flight_status || item.status || "";
@@ -223,6 +227,7 @@
             <td class="mono nowrap">${esc(flightIata)}</td>
             <td class="hide-sm">${esc(airline)}</td>
             <td>${esc(route)}</td>
+            <td class="mono nowrap">${esc(gates)}</td>
             <td class="hide-sm mono">${esc(times)}</td>
             <td class="mono">${esc(status)}</td>
             <td class="hide-sm mono">${esc(aircraft)}</td>
