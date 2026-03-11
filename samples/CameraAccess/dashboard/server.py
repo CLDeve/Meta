@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sqlite3
@@ -31,6 +32,8 @@ OPENSKY_TOKEN_URL = (
     "https://auth.opensky-network.org/auth/realms/opensky-network/"
     "protocol/openid-connect/token"
 )
+ADSBX_BASE_URL = os.getenv("ADSBX_BASE_URL", "https://api.adsb.lol").strip() or "https://api.adsb.lol"
+ADSBX_FALLBACK_ENABLED = os.getenv("ADSBX_FALLBACK_ENABLED", "1").strip() not in {"0", "false", "False"}
 AVIATIONSTACK_BASE_URL = "https://api.aviationstack.com/v1"
 CAS_API_KEY = os.getenv("CAS_API_KEY", "").strip()
 OPENSKY_CLIENT_ID = os.getenv("OPENSKY_CLIENT_ID", "").strip()
@@ -71,6 +74,7 @@ OPENSKY_POLL_ANON_MS = _read_int_env("OPENSKY_POLL_ANON_MS", 240_000)
 OPENSKY_POLL_AUTH_MS = _read_int_env("OPENSKY_POLL_AUTH_MS", 30_000)
 AVIATIONSTACK_CACHE_TTL_SECONDS = _read_int_env("AVIATIONSTACK_CACHE_TTL_SECONDS", 60)
 AVIATIONSTACK_TIMEOUT_SECONDS = _read_int_env("AVIATIONSTACK_TIMEOUT_SECONDS", 20)
+ADSBX_TIMEOUT_SECONDS = _read_int_env("ADSBX_TIMEOUT_SECONDS", 12)
 
 IATA_DESTINATIONS = {
     "AMS": "Amsterdam",
@@ -650,6 +654,137 @@ def _parse_opensky_state(row: Any) -> dict[str, Any] | None:
     }
 
 
+def _to_float_or_none(value: Any) -> float | None:
+    try:
+        value_f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not (value_f == value_f):  # NaN
+        return None
+    return value_f
+
+
+def _fetch_adsbx_fallback(
+    lamin: float,
+    lomin: float,
+    lamax: float,
+    lomax: float,
+    max_items: int,
+) -> tuple[int, dict[str, Any]]:
+    if not ADSBX_FALLBACK_ENABLED:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "OpenSky unavailable and ADSBX fallback disabled"}
+
+    min_lat, max_lat = sorted((lamin, lamax))
+    min_lon, max_lon = sorted((lomin, lomax))
+    center_lat = (min_lat + max_lat) / 2.0
+    center_lon = (min_lon + max_lon) / 2.0
+
+    lat_nm = 60.0
+    lon_nm = 60.0 * max(0.15, abs(math.cos(math.radians(center_lat))))
+    diag_nm = math.sqrt(((max_lat - min_lat) * lat_nm) ** 2 + ((max_lon - min_lon) * lon_nm) ** 2)
+    radius_nm = min(250.0, max(5.0, diag_nm / 2.0))
+
+    url = f"{ADSBX_BASE_URL.rstrip('/')}/v2/point/{center_lat:.5f}/{center_lon:.5f}/{radius_nm:.0f}"
+    req = Request(
+        url=url,
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "CameraAccessDashboard/1.0",
+        },
+    )
+    try:
+        with urlopen(req, timeout=ADSBX_TIMEOUT_SECONDS) as response:
+            body = response.read().decode("utf-8")
+    except HTTPError as err:
+        err_body = err.read().decode("utf-8", errors="replace")
+        return err.code, {"ok": False, "error": "ADSBX request failed", "status": err.code, "body": err_body}
+    except URLError as err:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"ADSBX connection failed: {err.reason}"}
+
+    try:
+        root = json.loads(body)
+    except json.JSONDecodeError:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "ADSBX returned non-JSON payload"}
+
+    aircraft = root.get("ac")
+    if not isinstance(aircraft, list):
+        aircraft = []
+
+    parsed_states: list[dict[str, Any]] = []
+    now_epoch_s = time.time()
+    for item in aircraft:
+        if not isinstance(item, dict):
+            continue
+        lat = _to_float_or_none(item.get("lat"))
+        lon = _to_float_or_none(item.get("lon"))
+        if lat is None or lon is None:
+            continue
+
+        callsign_raw = item.get("flight")
+        callsign = callsign_raw.strip() if isinstance(callsign_raw, str) else None
+        if callsign == "":
+            callsign = None
+
+        track = _to_float_or_none(item.get("track"))
+        gs_kt = _to_float_or_none(item.get("gs"))
+        velocity_ms = (gs_kt * 0.514444) if gs_kt is not None else None
+
+        alt_baro = item.get("alt_baro")
+        on_ground = isinstance(alt_baro, str) and alt_baro.lower() == "ground"
+        alt_baro_ft = _to_float_or_none(alt_baro) if not on_ground else None
+        alt_geom_ft = _to_float_or_none(item.get("alt_geom"))
+
+        baro_m = (alt_baro_ft / 3.28084) if alt_baro_ft is not None else None
+        geom_m = (alt_geom_ft / 3.28084) if alt_geom_ft is not None else None
+
+        seen_pos_s = _to_float_or_none(item.get("seen_pos"))
+        last_contact = int(now_epoch_s - seen_pos_s) if seen_pos_s is not None else None
+
+        parsed_states.append(
+            {
+                "icao24": item.get("hex"),
+                "callsign": callsign,
+                "originCountry": None,
+                "longitude": lon,
+                "latitude": lat,
+                "baroAltitude": baro_m,
+                "onGround": on_ground,
+                "velocity": velocity_ms,
+                "trueTrack": track,
+                "verticalRate": None,
+                "geoAltitude": geom_m,
+                "squawk": item.get("squawk"),
+                "positionSource": "adsbx",
+                "category": item.get("category"),
+                "lastContact": last_contact,
+            }
+        )
+        if len(parsed_states) >= max_items:
+            break
+
+    payload = {
+        "ok": True,
+        "source": "adsbx-fallback",
+        "provider": ADSBX_BASE_URL,
+        "authMode": "fallback",
+        "recommendedPollMs": 30_000,
+        "fetchedAtEpochMs": int(time.time() * 1000),
+        "time": int(time.time()),
+        "bbox": {
+            "lamin": min_lat,
+            "lomin": min_lon,
+            "lamax": max_lat,
+            "lomax": max_lon,
+        },
+        "count": len(parsed_states),
+        "rawCount": len(aircraft),
+        "states": parsed_states,
+        "warning": "OpenSky timed out. Showing ADSBX fallback data.",
+    }
+    return HTTPStatus.OK, payload
+
+
 def fetch_opensky_states(
     lamin: float,
     lomin: float,
@@ -749,7 +884,16 @@ def fetch_opensky_states(
         stale_result = stale_opensky_payload("OpenSky timed out. Showing cached airspace data.")
         if stale_result is not None:
             return stale_result
-        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"OpenSky connection failed: {err.reason}"}
+        reason = str(err.reason).strip()
+        if reason.lower() in {"timed out", "timeout"}:
+            return _fetch_adsbx_fallback(
+                lamin=min_lat,
+                lomin=min_lon,
+                lamax=max_lat,
+                lomax=max_lon,
+                max_items=max_items,
+            )
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"OpenSky connection failed: {reason}"}
 
     try:
         root = json.loads(body)
