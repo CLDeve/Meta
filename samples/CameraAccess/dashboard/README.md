@@ -13,6 +13,9 @@ Optional throttle settings:
 
 - `CAS_CACHE_TTL_SECONDS` (default `45`)
 - `CAS_THROTTLE_BACKOFF_SECONDS` (default `45`)
+- `AVIATIONSTACK_API_KEY` (optional; enables `/aviationstack` + `/api/aviationstack/*` proxy endpoints)
+- `AVIATIONSTACK_CACHE_TTL_SECONDS` (default `60`)
+- `AVIATIONSTACK_TIMEOUT_SECONDS` (default `20`)
 - `EVENTS_MAXLEN` (default `0`, no auto-trim; set >0 to keep only newest N events)
 - `EVENTS_DB_PATH` (default `./events.db` beside `server.py`)
 - `DASHBOARD_ADMIN_TOKEN` (optional; required for `DELETE /api/events` if set)
@@ -31,6 +34,8 @@ Open in browser:
 - `http://<laptop-lan-ip>:5055` (other devices on same network)
 - `http://localhost:5055/flights` (flight departures page)
 - `http://localhost:5055/worldview` (geospatial intelligence style page)
+- `http://localhost:5055/aviationstack` (Aviationstack JSON explorer; requires `AVIATIONSTACK_API_KEY`)
+- `http://localhost:5055/aviationstack-flights` (Aviationstack flights table; requires `AVIATIONSTACK_API_KEY`)
 
 ## Android app config
 
@@ -57,6 +62,8 @@ Endpoints:
   `https://opensky-network.org/api/states/all`
   (uses OAuth2 when `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` are set; otherwise anonymous mode)
 - `GET /api/gates20` returns the 20-gate snapshot from `gates20.json`.
+- `GET /api/aviationstack/<resource>?...` proxies to `https://api.aviationstack.com/v1/<resource>`
+  (requires env var `AVIATIONSTACK_API_KEY` when starting server; caches by full query string)
 - `POST /api/ptt` sends `cameraaccess://ptt` to the adb-connected phone app from the laptop backend.
   Requires adb on the same machine running `server.py`.
 

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aviationstack Flights</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071124;
+      --panel: rgba(17, 28, 53, 0.76);
+      --border: rgba(78, 113, 166, 0.34);
+      --text: #eaf2ff;
+      --muted: rgba(234, 242, 255, 0.7);
+      --pill: rgba(16, 30, 54, 0.9);
+      --accent: #7dd3fc;
+      --ok: #34d399;
+      --bad: #fb7185;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(1200px 600px at 10% 5%, rgba(59, 130, 246, 0.18), transparent 55%),
+                  radial-gradient(900px 520px at 70% 20%, rgba(14, 165, 233, 0.12), transparent 60%),
+                  var(--bg);
+      color: var(--text);
+    }
+    .shell { max-width: 1280px; margin: 0 auto; padding: 28px 18px 44px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+    .title { margin: 0; font-size: 20px; letter-spacing: 0.2px; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); }
+    .pill {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid rgba(78, 113, 166, 0.26);
+      background: var(--pill);
+      padding: 10px 12px;
+      border-radius: 999px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 650;
+      letter-spacing: 0.2px;
+    }
+    .pill:hover { border-color: rgba(125, 211, 252, 0.55); }
+
+    .filters { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    label { display: block; font-weight: 650; margin-bottom: 6px; color: rgba(234, 242, 255, 0.9); }
+    input, select, button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(78, 113, 166, 0.28);
+      background: rgba(6, 12, 26, 0.5);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 800;
+      background: rgba(14, 165, 233, 0.22);
+      border-color: rgba(125, 211, 252, 0.35);
+    }
+    button:hover { background: rgba(14, 165, 233, 0.28); border-color: rgba(125, 211, 252, 0.55); }
+    .status { margin-top: 12px; color: var(--muted); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .badge { font-family: var(--mono); padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(78, 113, 166, 0.28); }
+    .badge.ok { color: var(--ok); border-color: rgba(52, 211, 153, 0.35); }
+    .badge.bad { color: var(--bad); border-color: rgba(251, 113, 133, 0.35); }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; overflow: hidden; border-radius: 14px; }
+    th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid rgba(78, 113, 166, 0.18); vertical-align: top; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(234, 242, 255, 0.75); }
+    td { font-size: 13px; color: rgba(234, 242, 255, 0.92); }
+    .mono { font-family: var(--mono); }
+    .muted { color: var(--muted); }
+    .nowrap { white-space: nowrap; }
+    .empty { margin-top: 12px; color: var(--muted); }
+    pre { margin: 12px 0 0; padding: 12px; border-radius: 14px; border: 1px solid rgba(78, 113, 166, 0.22); background: rgba(6, 12, 26, 0.35); font-family: var(--mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+
+    @media (max-width: 1100px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 720px) { .filters { grid-template-columns: 1fr; } .hide-sm { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="panel">
+      <div class="row">
+        <div>
+          <h1 class="title">Aviationstack Flights</h1>
+          <p class="subtitle">Table view for `/api/aviationstack/flights` (requires server env var <span class="mono">AVIATIONSTACK_API_KEY</span>).</p>
+        </div>
+        <div class="row">
+          <a class="pill" href="/">Dashboard</a>
+          <a class="pill" href="/aviationstack">Explorer</a>
+        </div>
+      </div>
+
+      <form id="form" class="filters">
+        <div>
+          <label for="flight_iata">Flight IATA</label>
+          <input id="flight_iata" name="flight_iata" placeholder="SQ318" />
+        </div>
+        <div>
+          <label for="airline_iata">Airline IATA</label>
+          <input id="airline_iata" name="airline_iata" placeholder="SQ" />
+        </div>
+        <div>
+          <label for="dep_iata">Dep IATA</label>
+          <input id="dep_iata" name="dep_iata" placeholder="SIN" />
+        </div>
+        <div>
+          <label for="arr_iata">Arr IATA</label>
+          <input id="arr_iata" name="arr_iata" placeholder="NRT" />
+        </div>
+        <div>
+          <label for="date">Date</label>
+          <input id="date" name="date" placeholder="YYYY-MM-DD" />
+        </div>
+        <div>
+          <label for="limit">Limit</label>
+          <div style="display:flex; gap:10px;">
+            <input id="limit" name="limit" placeholder="10" value="10" />
+            <button id="run" type="submit" style="max-width:140px;">Fetch</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="status">
+        <div class="badge" id="req">/api/aviationstack/flights</div>
+        <div class="badge" id="stat">idle</div>
+        <div class="muted" id="meta"></div>
+      </div>
+
+      <div id="empty" class="empty">No results yet.</div>
+      <div id="tableWrap" style="display:none;">
+        <table>
+          <thead>
+            <tr>
+              <th class="nowrap">Flight</th>
+              <th class="hide-sm">Airline</th>
+              <th>Route</th>
+              <th class="hide-sm">Times</th>
+              <th>Status</th>
+              <th class="hide-sm">Aircraft</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <pre id="raw" style="display:none;"></pre>
+    </section>
+  </div>
+
+  <script>
+    const form = document.getElementById("form");
+    const req = document.getElementById("req");
+    const stat = document.getElementById("stat");
+    const meta = document.getElementById("meta");
+    const empty = document.getElementById("empty");
+    const tableWrap = document.getElementById("tableWrap");
+    const rows = document.getElementById("rows");
+    const raw = document.getElementById("raw");
+    const run = document.getElementById("run");
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+    }
+
+    function pick(obj, path) {
+      let cur = obj;
+      for (const key of path) {
+        if (!cur || typeof cur !== "object") return "";
+        cur = cur[key];
+      }
+      return cur ?? "";
+    }
+
+    function buildQuery() {
+      const params = new URLSearchParams();
+      for (const el of form.querySelectorAll("input")) {
+        const key = el.name;
+        const val = String(el.value || "").trim();
+        if (val) params.set(key, val);
+      }
+      return params;
+    }
+
+    function setStatus(text, ok = null) {
+      stat.textContent = text;
+      stat.className = "badge";
+      if (ok === true) stat.classList.add("ok");
+      if (ok === false) stat.classList.add("bad");
+    }
+
+    function renderRows(items) {
+      rows.innerHTML = "";
+      for (const item of items) {
+        const flightIata = pick(item, ["flight", "iata"]) || pick(item, ["flight", "icao"]) || "";
+        const airline = pick(item, ["airline", "name"]) || pick(item, ["airline", "iata"]) || "";
+        const dep = pick(item, ["departure", "iata"]) || pick(item, ["departure", "airport"]) || "";
+        const arr = pick(item, ["arrival", "iata"]) || pick(item, ["arrival", "airport"]) || "";
+        const route = `${dep} → ${arr}`.trim();
+        const sched = pick(item, ["departure", "scheduled"]) || "";
+        const est = pick(item, ["departure", "estimated"]) || "";
+        const status = item.flight_status || item.status || "";
+        const aircraft = pick(item, ["aircraft", "registration"]) || pick(item, ["aircraft", "iata"]) || pick(item, ["aircraft", "icao"]) || "";
+
+        const times = [sched && `sched ${sched}`, est && `est ${est}`].filter(Boolean).join("\n");
+        rows.insertAdjacentHTML("beforeend", `
+          <tr>
+            <td class="mono nowrap">${esc(flightIata)}</td>
+            <td class="hide-sm">${esc(airline)}</td>
+            <td>${esc(route)}</td>
+            <td class="hide-sm mono">${esc(times)}</td>
+            <td class="mono">${esc(status)}</td>
+            <td class="hide-sm mono">${esc(aircraft)}</td>
+          </tr>
+        `);
+      }
+    }
+
+    async function fetchFlights() {
+      const query = buildQuery();
+      const path = `/api/aviationstack/flights?${query.toString()}`;
+      req.textContent = path;
+      empty.style.display = "block";
+      empty.textContent = "Loading…";
+      tableWrap.style.display = "none";
+      raw.style.display = "none";
+      meta.textContent = "";
+      setStatus("loading");
+      run.disabled = true;
+      try {
+        const resp = await fetch(path, { cache: "no-store" });
+        const payload = await resp.json().catch(async () => ({ ok: false, error: "Non-JSON response", body: await resp.text() }));
+        setStatus(String(resp.status), resp.ok);
+
+        if (!resp.ok || payload?.ok === false) {
+          empty.textContent = payload?.error ? String(payload.error) : "Request failed";
+          raw.style.display = "block";
+          raw.textContent = JSON.stringify(payload, null, 2);
+          return;
+        }
+
+        const upstream = payload.data || {};
+        const items = Array.isArray(upstream.data) ? upstream.data : [];
+        const pagination = upstream.pagination || {};
+        meta.textContent = `returned ${items.length}` + (pagination?.total ? ` / total ${pagination.total}` : "");
+
+        if (!items.length) {
+          empty.textContent = "No flights returned for the current filters.";
+          return;
+        }
+
+        empty.style.display = "none";
+        tableWrap.style.display = "block";
+        renderRows(items);
+      } catch (err) {
+        setStatus("error", false);
+        empty.textContent = String(err);
+      } finally {
+        run.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      fetchFlights();
+    });
+  </script>
+</body>
+</html>
+

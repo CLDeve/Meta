@@ -31,12 +31,15 @@ OPENSKY_TOKEN_URL = (
     "https://auth.opensky-network.org/auth/realms/opensky-network/"
     "protocol/openid-connect/token"
 )
+AVIATIONSTACK_BASE_URL = "https://api.aviationstack.com/v1"
 CAS_API_KEY = os.getenv("CAS_API_KEY", "").strip()
 OPENSKY_CLIENT_ID = os.getenv("OPENSKY_CLIENT_ID", "").strip()
 OPENSKY_CLIENT_SECRET = os.getenv("OPENSKY_CLIENT_SECRET", "").strip()
+AVIATIONSTACK_API_KEY = os.getenv("AVIATIONSTACK_API_KEY", "").strip()
 ADMIN_TOKEN = os.getenv("DASHBOARD_ADMIN_TOKEN", "").strip()
 FLIGHTS_CACHE: dict[str, dict[str, Any]] = {}
 OPENSKY_CACHE: dict[str, dict[str, Any]] = {}
+AVIATIONSTACK_CACHE: dict[str, dict[str, Any]] = {}
 CAS_THROTTLED_UNTIL = 0.0
 DB_CONN: sqlite3.Connection | None = None
 OPENSKY_TOKEN: str | None = None
@@ -66,6 +69,8 @@ OPENSKY_CACHE_TTL_SECONDS = _read_int_env("OPENSKY_CACHE_TTL_SECONDS", 30)
 OPENSKY_TIMEOUT_SECONDS = _read_int_env("OPENSKY_TIMEOUT_SECONDS", 15)
 OPENSKY_POLL_ANON_MS = _read_int_env("OPENSKY_POLL_ANON_MS", 240_000)
 OPENSKY_POLL_AUTH_MS = _read_int_env("OPENSKY_POLL_AUTH_MS", 30_000)
+AVIATIONSTACK_CACHE_TTL_SECONDS = _read_int_env("AVIATIONSTACK_CACHE_TTL_SECONDS", 60)
+AVIATIONSTACK_TIMEOUT_SECONDS = _read_int_env("AVIATIONSTACK_TIMEOUT_SECONDS", 20)
 
 IATA_DESTINATIONS = {
     "AMS": "Amsterdam",
@@ -336,6 +341,87 @@ def fetch_departures(date: str, flight_type: str, flight_no: str) -> tuple[int, 
                 payload["warning"] = "CAS API is throttled/forbidden. Showing cached data."
                 return HTTPStatus.OK, payload
         return err.code, {"ok": False, "error": "Upstream HTTP error", "status": err.code, "body": body}
+    except URLError as err:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"Upstream connection failed: {err.reason}"}
+    except json.JSONDecodeError:
+        return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "Upstream returned non-JSON payload"}
+
+
+AVIATIONSTACK_RESOURCES = {
+    "flights",
+    "airports",
+    "airlines",
+    "aircraft",
+    "routes",
+    "cities",
+    "countries",
+    "taxes",
+}
+
+
+def fetch_aviationstack(resource: str, params: dict[str, str]) -> tuple[int, dict[str, Any]]:
+    resource = (resource or "").strip().lower()
+    if not AVIATIONSTACK_API_KEY:
+        return HTTPStatus.BAD_REQUEST, {
+            "ok": False,
+            "error": "Missing AVIATIONSTACK_API_KEY. Set env var AVIATIONSTACK_API_KEY before starting server.",
+        }
+    if resource not in AVIATIONSTACK_RESOURCES:
+        return HTTPStatus.BAD_REQUEST, {
+            "ok": False,
+            "error": "Invalid resource",
+            "allowed": sorted(AVIATIONSTACK_RESOURCES),
+        }
+
+    cleaned: dict[str, str] = {}
+    for key, value in (params or {}).items():
+        if key in {"access_key", "apikey", "api_key"}:
+            continue
+        if not key or len(key) > 64:
+            continue
+        if len(value) > 256:
+            continue
+        cleaned[key] = value
+        if len(cleaned) >= 30:
+            break
+
+    cache_key = resource + "|" + urlencode(sorted(cleaned.items()))
+    cached_payload, _ = _cache_get(AVIATIONSTACK_CACHE, cache_key, allow_stale=False)
+    if cached_payload is not None:
+        payload = dict(cached_payload)
+        payload["cache"] = {"hit": True, "stale": False}
+        return HTTPStatus.OK, payload
+
+    query = {"access_key": AVIATIONSTACK_API_KEY, **cleaned}
+    url = f"{AVIATIONSTACK_BASE_URL}/{resource}?{urlencode(query)}"
+    request = Request(
+        url=url,
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "CameraAccessDashboard/1.0",
+        },
+    )
+    try:
+        with urlopen(request, timeout=AVIATIONSTACK_TIMEOUT_SECONDS) as response:
+            body = response.read().decode("utf-8")
+            payload = json.loads(body)
+            result = {
+                "ok": True,
+                "resource": resource,
+                "query": cleaned,
+                "data": payload,
+            }
+            _cache_set(AVIATIONSTACK_CACHE, cache_key, result, ttl_seconds=AVIATIONSTACK_CACHE_TTL_SECONDS)
+            return HTTPStatus.OK, result
+    except HTTPError as err:
+        body = err.read().decode("utf-8", errors="replace")
+        return err.code, {
+            "ok": False,
+            "error": "Upstream HTTP error",
+            "status": err.code,
+            "body": body,
+        }
     except URLError as err:
         return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": f"Upstream connection failed: {err.reason}"}
     except json.JSONDecodeError:
@@ -961,6 +1047,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_text(html, "text/html; charset=utf-8")
             return
 
+        if parsed.path in {"/aviationstack", "/aviationstack.html"}:
+            aviationstack_path = Path(__file__).with_name("aviationstack.html")
+            if not aviationstack_path.exists():
+                self._send_json(
+                    {"error": "Missing aviationstack.html"},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+            html = aviationstack_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
+        if parsed.path in {"/aviationstack-flights", "/aviationstack-flights.html"}:
+            aviationstack_flights_path = Path(__file__).with_name("aviationstack-flights.html")
+            if not aviationstack_flights_path.exists():
+                self._send_json(
+                    {"error": "Missing aviationstack-flights.html"},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+            html = aviationstack_flights_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
         if parsed.path == "/healthz":
             self._send_json(
                 {
@@ -1096,6 +1206,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
             limit = min(max(limit, 1), 2000)
             payload = {"ok": True, "gates": list_latest_gate_events(limit=limit)}
             self._send_json(payload)
+            return
+
+        if parsed.path == "/api/aviationstack":
+            qs = parse_qs(parsed.query)
+            resource = (qs.get("resource", ["flights"])[0] or "flights").strip()
+            params = {
+                key: (values[0] or "").strip()
+                for key, values in qs.items()
+                if key not in {"resource"} and values
+            }
+            status, payload = fetch_aviationstack(resource=resource, params=params)
+            self._send_json(payload, status=status)
+            return
+
+        if parsed.path.startswith("/api/aviationstack/"):
+            resource = parsed.path.removeprefix("/api/aviationstack/").strip()
+            qs = parse_qs(parsed.query)
+            params = {key: (values[0] or "").strip() for key, values in qs.items() if values}
+            status, payload = fetch_aviationstack(resource=resource, params=params)
+            self._send_json(payload, status=status)
             return
 
         self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
