@@ -335,6 +335,7 @@
       fillOpacity: 0.02,
     }).addTo(map);
 
+    const trailsLayer = L.layerGroup().addTo(map);
     const flightsLayer = L.layerGroup().addTo(map);
 
     function setConnection(ok) {
@@ -545,6 +546,9 @@
     }
 
     const markersByKey = new Map();
+    const trailsByKey = new Map();
+    const trailPointsByKey = new Map();
+    const MAX_TRAIL_POINTS = 10;
 
     function markerKey(state) {
       const key = String(state?.icao24 || "").trim();
@@ -613,6 +617,25 @@
         }
         setMarkerHeading(marker, heading);
 
+        const trailColor = Boolean(state?.onGround) ? "#ff8b5e" : (inbound ? "#67ffc7" : "#61d7ff");
+        const nextPoint = L.latLng(lat, lon);
+        const points = trailPointsByKey.get(key) || [];
+        const lastPoint = points.length ? points[points.length - 1] : null;
+        if (!lastPoint || lastPoint.distanceTo(nextPoint) > 35) {
+          points.push(nextPoint);
+          while (points.length > MAX_TRAIL_POINTS) points.shift();
+          trailPointsByKey.set(key, points);
+        }
+        let trail = trailsByKey.get(key);
+        if (!trail) {
+          trail = L.polyline(points, { color: trailColor, weight: 2, opacity: 0.55, interactive: false });
+          trail.addTo(trailsLayer);
+          trailsByKey.set(key, trail);
+        } else {
+          trail.setStyle({ color: trailColor });
+          trail.setLatLngs(points);
+        }
+
         const callsign = state?.callsign || state?.icao24 || "unknown";
         const altitude = fmtAltitude(Number(state?.baroAltitude ?? state?.geoAltitude));
         const speed = fmtSpeed(Number(state?.velocity));
@@ -632,6 +655,12 @@
         if (seen.has(key)) continue;
         flightsLayer.removeLayer(marker);
         markersByKey.delete(key);
+        const trail = trailsByKey.get(key);
+        if (trail) {
+          trailsLayer.removeLayer(trail);
+          trailsByKey.delete(key);
+        }
+        trailPointsByKey.delete(key);
       }
     }
 
