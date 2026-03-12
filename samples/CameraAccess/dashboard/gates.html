@@ -77,6 +77,7 @@
       background: var(--panel);
       padding: 12px;
       min-height: 150px;
+      position: relative;
     }
 
     .frame {
@@ -123,6 +124,24 @@
       height: 100%;
       background: rgba(243, 244, 246, 0.75);
       width: 0%;
+    }
+
+    .paxBadge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.25);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      backdrop-filter: blur(8px);
     }
 
     .status {
@@ -265,20 +284,20 @@
           const offblock = item.targetedOffblockTime || "-";
           const status = item.status || "-";
           const paxPct = pickPaxPct(item, live);
-          const paxLine = paxPct == null
-            ? `<p class="meta">Pax: -</p>`
-            : `<p class="meta">Pax: ${esc(paxPct)}%</p><div class="bar"><div class="barFill" style="width:${esc(paxPct)}%"></div></div>`;
+          const paxBadge = paxPct == null
+            ? ""
+            : `<div class="paxBadge">PAX ${esc(paxPct)}%</div>`;
           const statusClass = live.aiError ? "status error" : "status";
           const timestamp = item.messageTimestamp || "-";
           return `
             <article class="card">
               ${frame}
+              ${paxBadge}
               <h2 class="gate">${esc(item.gate || "-")}</h2>
               <p class="flight">${esc(flight)} → ${esc(destination)}</p>
               <p class="meta">Scheduled: ${esc(scheduled)}</p>
               <p class="meta">Estimated: ${esc(estimated)}</p>
               <p class="meta">TOBT: ${esc(offblock)}</p>
-              ${paxLine}
               <p class="meta">Updated: ${esc(timestamp)}</p>
               ${note}
               ${aiError}
