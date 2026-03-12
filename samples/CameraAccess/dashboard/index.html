@@ -267,16 +267,6 @@
       const answer = event.answer || "(no answer)";
       const err = event.aiError || "";
       const when = event.receivedAtIso || "-";
-      const command = (event.commandCard && typeof event.commandCard === "object") ? event.commandCard : null;
-      const intentTitle = command?.title || command?.intent || event.intent || "";
-      const commandAction = command?.action || "";
-      const commandGate = command?.targetGate ? ` • Gate ${escapeHtml(String(command.targetGate))}` : "";
-      const priorityLabel = command?.priority
-        ? `<span class="priority-tag">${escapeHtml(String(command.priority))}</span>`
-        : "";
-      const commandHtml = intentTitle
-        ? `<div class="line command"><strong>Command:${priorityLabel}</strong><div class="text">${escapeHtml(String(intentTitle))}${commandGate}</div>${commandAction ? `<div class="text">${escapeHtml(String(commandAction))}</div>` : ""}</div>`
-        : "";
 
       card.innerHTML = `
         <div>${frameHtml}</div>
@@ -284,7 +274,6 @@
           <h3>#${event.id} • ${new Date(when).toLocaleString()}</h3>
           <div class="line"><strong>Question:</strong><div class="text">${escapeHtml(asked)}</div></div>
           <div class="line answer"><strong>Answer:</strong><div class="text">${escapeHtml(String(answer))}</div></div>
-          ${commandHtml}
           ${err ? `<div class="line error"><strong>AI Error:</strong><div class="text">${escapeHtml(String(err))}</div></div>` : ""}
           <div class="expand-hint">Click card to expand</div>
         </div>
