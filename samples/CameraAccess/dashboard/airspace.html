@@ -354,7 +354,7 @@
 
     function planeIcon(track, onGround, inbound) {
       const heading = Number.isFinite(track) ? track : 0;
-      const fill = onGround ? "#9ca3af" : (inbound ? "#f3f4f6" : "#d1d5db");
+      const fill = onGround ? "#9ca3af" : "#facc15";
       const stroke = "rgba(10, 18, 32, 0.9)";
       return L.divIcon({
         className: "",
@@ -617,7 +617,7 @@
         }
         setMarkerHeading(marker, heading);
 
-        const trailColor = Boolean(state?.onGround) ? "#9ca3af" : (inbound ? "#f3f4f6" : "#d1d5db");
+        const trailColor = Boolean(state?.onGround) ? "#9ca3af" : "#facc15";
         const nextPoint = L.latLng(lat, lon);
         const points = trailPointsByKey.get(key) || [];
         const lastPoint = points.length ? points[points.length - 1] : null;
