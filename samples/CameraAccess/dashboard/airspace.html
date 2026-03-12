@@ -679,7 +679,13 @@
           lomax: String(OPEN_SKY_BBOX.lomax),
           limit: "250",
         });
-        const res = await fetch(`/api/opensky?${query.toString()}`, { cache: "no-store" });
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 12_000);
+        const res = await fetch(`/api/opensky?${query.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        window.clearTimeout(timeout);
         const payload = await res.json();
         if (!res.ok || !payload?.ok) {
           throw new Error(payload?.error || ("HTTP " + res.status));
