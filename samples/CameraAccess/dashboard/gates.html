@@ -173,6 +173,12 @@
       padding: 4px 8px;
     }
 
+    .status.closing {
+      border-color: rgba(34, 197, 94, 0.7);
+      background: rgba(34, 197, 94, 0.22);
+      color: rgba(243, 244, 246, 0.98);
+    }
+
     .status.error {
       border-color: rgba(255, 143, 155, 0.45);
       color: var(--error);
@@ -326,8 +332,10 @@
           }
           const paxEl = `<div class="paxPct${paxSimulated ? " sim" : ""}">${esc(paxPct)}%</div>`;
           const highPax = Number(paxPct) >= 90;
-          const statusClass = live.aiError ? "status error" : "status";
           const displayStatus = (Number(paxPct) >= 92 && String(status) === "Gate Open") ? "Gate Closing" : status;
+          const statusClass = live.aiError
+            ? "status error"
+            : (displayStatus === "Gate Closing" ? "status closing" : "status");
           const timestamp = item.messageTimestamp || "-";
           return `
             <article class="card${highPax ? " highPax" : ""}">
