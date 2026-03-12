@@ -327,6 +327,7 @@
           const paxEl = `<div class="paxPct${paxSimulated ? " sim" : ""}">${esc(paxPct)}%</div>`;
           const highPax = Number(paxPct) >= 90;
           const statusClass = live.aiError ? "status error" : "status";
+          const displayStatus = (Number(paxPct) >= 92 && String(status) === "Gate Open") ? "Gate Closing" : status;
           const timestamp = item.messageTimestamp || "-";
           return `
             <article class="card${highPax ? " highPax" : ""}">
@@ -340,7 +341,7 @@
               <p class="meta">Estimated: ${esc(estimated)}</p>
               ${note}
               ${aiError}
-              <span class="${statusClass}">${esc(status)}</span>
+              <span class="${statusClass}">${esc(displayStatus)}</span>
             </article>
           `;
         }).join("");
