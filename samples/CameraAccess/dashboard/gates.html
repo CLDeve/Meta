@@ -79,6 +79,12 @@
       min-height: 150px;
     }
 
+    .card.highPax {
+      border-color: rgba(34, 197, 94, 0.55);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.14), rgba(255, 255, 255, 0.08));
+      box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.10), 0 16px 40px rgba(0, 0, 0, 0.18);
+    }
+
     .frame {
       width: 100%;
       height: 140px;
@@ -319,10 +325,11 @@
             paxPct = simulatedPaxPct(item);
           }
           const paxEl = `<div class="paxPct${paxSimulated ? " sim" : ""}">${esc(paxPct)}%</div>`;
+          const highPax = Number(paxPct) >= 90;
           const statusClass = live.aiError ? "status error" : "status";
           const timestamp = item.messageTimestamp || "-";
           return `
-            <article class="card">
+            <article class="card${highPax ? " highPax" : ""}">
               ${frame}
               <div class="head">
                 <h2 class="gate">${esc(item.gate || "-")}</h2>
