@@ -7,16 +7,16 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg-1: #000000;
-      --bg-2: #000000;
+      --bg-1: #060607;
+      --bg-2: #0b0b0c;
       --panel: rgba(255, 255, 255, 0.08);
-      --panel-border: rgba(255, 255, 255, 0.2);
-      --text: #edf4ff;
-      --muted: #a9bdd9;
-      --ok: #4df0b5;
-      --warn: #ffb57a;
-      --bad: #ff8f9b;
-      --accent: #44a5ff;
+      --panel-border: rgba(243, 244, 246, 0.16);
+      --text: #f3f4f6;
+      --muted: rgba(243, 244, 246, 0.68);
+      --ok: #f3f4f6;
+      --warn: rgba(243, 244, 246, 0.68);
+      --bad: #f3f4f6;
+      --accent: #f3f4f6;
     }
 
     * { box-sizing: border-box; }
@@ -25,7 +25,10 @@
       margin: 0;
       color: var(--text);
       font-family: "Avenir Next", "Segoe UI", sans-serif;
-      background: #000000;
+      background:
+        radial-gradient(1200px 700px at 10% 0%, rgba(255,255,255,0.10), transparent 55%),
+        radial-gradient(900px 600px at 80% 20%, rgba(255,255,255,0.06), transparent 55%),
+        linear-gradient(160deg, var(--bg-1), var(--bg-2));
       min-height: 100vh;
     }
 
