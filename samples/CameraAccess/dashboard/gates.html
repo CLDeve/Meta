@@ -89,6 +89,18 @@
       background: rgba(0, 0, 0, 0.35);
     }
 
+    .frame.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.06);
+      border-color: var(--border);
+    }
+
     .gate {
       font-size: 30px;
       line-height: 1;
@@ -292,7 +304,7 @@
           const live = liveMap[item.gate] || {};
           const frame = live.frameJpegBase64
             ? `<img class="frame" alt="Live frame" src="data:${live.imageMimeType || "image/jpeg"};base64,${live.frameJpegBase64}" />`
-            : "";
+            : `<div class="frame placeholder">No frame</div>`;
           const note = live.question ? `<p class="meta">Note: ${esc(live.question)}</p>` : "";
           const aiError = live.aiError ? `<div class="error"><strong>AI error:</strong> ${esc(live.aiError)}</div>` : "";
           const flight = item.flightNo || "-";
