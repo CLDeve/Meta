@@ -110,6 +110,21 @@
       line-height: 1.5;
     }
 
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      margin-top: 6px;
+    }
+
+    .barFill {
+      height: 100%;
+      background: rgba(243, 244, 246, 0.75);
+      width: 0%;
+    }
+
     .status {
       margin-top: 10px;
       display: inline-block;
@@ -183,6 +198,41 @@
         .replaceAll("'", "&#39;");
     }
 
+    function clampPct(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return null;
+      if (n < 0) return 0;
+      if (n > 100) return 100;
+      return Math.round(n);
+    }
+
+    function parsePctFromText(text) {
+      const raw = String(text || "");
+      const match =
+        raw.match(/(?:pax|passenger|load|lf)[^\\d%]{0,20}(\\d{1,3})\\s*%/i) ||
+        raw.match(/(\\d{1,3})\\s*%/);
+      if (!match) return null;
+      return clampPct(match[1]);
+    }
+
+    function pickPaxPct(item, live) {
+      const candidates = [
+        live?.paxPercentage, live?.paxPct, live?.pax_percent, live?.pax, live?.loadFactor,
+        item?.paxPercentage, item?.paxPct, item?.pax_percent, item?.pax, item?.loadFactor,
+      ];
+      for (const c of candidates) {
+        const pct = clampPct(c);
+        if (pct != null) return pct;
+      }
+      const textCandidates = [live?.answer, live?.answerText, live?.response, live?.remark, live?.question];
+      for (const t of textCandidates) {
+        if (typeof t !== "string") continue;
+        const pct = parsePctFromText(t);
+        if (pct != null) return pct;
+      }
+      return null;
+    }
+
     async function loadGates() {
       try {
         const [gatesResp, liveResp] = await Promise.all([
@@ -214,6 +264,10 @@
           const estimated = item.estimatedTime || "-";
           const offblock = item.targetedOffblockTime || "-";
           const status = item.status || "-";
+          const paxPct = pickPaxPct(item, live);
+          const paxLine = paxPct == null
+            ? `<p class="meta">Pax: -</p>`
+            : `<p class="meta">Pax: ${esc(paxPct)}%</p><div class="bar"><div class="barFill" style="width:${esc(paxPct)}%"></div></div>`;
           const statusClass = live.aiError ? "status error" : "status";
           const timestamp = item.messageTimestamp || "-";
           return `
@@ -224,6 +278,7 @@
               <p class="meta">Scheduled: ${esc(scheduled)}</p>
               <p class="meta">Estimated: ${esc(estimated)}</p>
               <p class="meta">TOBT: ${esc(offblock)}</p>
+              ${paxLine}
               <p class="meta">Updated: ${esc(timestamp)}</p>
               ${note}
               ${aiError}
