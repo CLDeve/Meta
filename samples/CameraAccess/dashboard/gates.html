@@ -77,7 +77,6 @@
       background: var(--panel);
       padding: 12px;
       min-height: 150px;
-      position: relative;
     }
 
     .frame {
@@ -126,26 +125,24 @@
       width: 0%;
     }
 
-    .paxBadge {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: rgba(0, 0, 0, 0.25);
-      color: var(--text);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      backdrop-filter: blur(8px);
+    .head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 8px;
     }
 
-    .paxBadge.sim {
-      opacity: 0.75;
+    .paxPct {
+      font-size: 30px;
+      line-height: 1;
+      margin: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .paxPct.sim {
+      opacity: 0.7;
     }
 
     .status {
@@ -309,14 +306,16 @@
           if (paxPct == null) {
             paxPct = simulatedPaxPct(item);
           }
-          const paxBadge = `<div class="paxBadge${paxSimulated ? " sim" : ""}">PAX ${esc(paxPct)}%</div>`;
+          const paxEl = `<div class="paxPct${paxSimulated ? " sim" : ""}">${esc(paxPct)}%</div>`;
           const statusClass = live.aiError ? "status error" : "status";
           const timestamp = item.messageTimestamp || "-";
           return `
             <article class="card">
               ${frame}
-              ${paxBadge}
-              <h2 class="gate">${esc(item.gate || "-")}</h2>
+              <div class="head">
+                <h2 class="gate">${esc(item.gate || "-")}</h2>
+                ${paxEl}
+              </div>
               <p class="flight">${esc(flight)} → ${esc(destination)}</p>
               <p class="meta">Scheduled: ${esc(scheduled)}</p>
               <p class="meta">Estimated: ${esc(estimated)}</p>
