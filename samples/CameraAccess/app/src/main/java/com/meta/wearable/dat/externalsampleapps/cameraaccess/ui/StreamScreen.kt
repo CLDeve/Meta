@@ -97,6 +97,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
 import androidx.compose.material.icons.filled.StopCircle
@@ -226,6 +227,7 @@ fun StreamScreen(
         onStartVoiceDescribe = { streamViewModel.startVoiceDescribe(context) },
         onCapturePhoto = { streamViewModel.capturePhoto() },
         onOpenPeopleCountPage = { streamViewModel.showPeopleCountPage() },
+        onToggleHeyCas = { streamViewModel.toggleHeyCas(context) },
         onToggleLivePov = { streamViewModel.toggleLivePovSharing() },
         onTogglePatrol = { streamViewModel.togglePatrolMode() },
         onStopStream = {
@@ -294,6 +296,7 @@ private fun ChatOverlay(
     onStartVoiceDescribe: () -> Unit,
     onCapturePhoto: () -> Unit,
     onOpenPeopleCountPage: () -> Unit,
+    onToggleHeyCas: () -> Unit,
     onToggleLivePov: () -> Unit,
     onTogglePatrol: () -> Unit,
     onStopStream: () -> Unit,
@@ -301,13 +304,13 @@ private fun ChatOverlay(
 ) {
   var draft by rememberSaveable { mutableStateOf("") }
   var isMenuOpen by rememberSaveable { mutableStateOf(false) }
-  val canSend = draft.isNotBlank() && !isDescribeLoading
+  val canSend = draft.isNotBlank()
   val listState = rememberLazyListState()
   val composerFocusRequester = remember { FocusRequester() }
 
   fun submitDraft() {
     val normalized = draft.trim()
-    if (normalized.isEmpty() || isDescribeLoading) return
+    if (normalized.isEmpty()) return
     onSendQuestion(normalized)
     draft = ""
   }
@@ -424,6 +427,17 @@ private fun ChatOverlay(
             }
             item {
               QuickActionIcon(
+                  icon = Icons.Filled.RecordVoiceOver,
+                  contentDescription = "Hey CAS",
+                  isSelected = streamUiState.isHeyCasEnabled,
+                  onClick = {
+                    isMenuOpen = false
+                    onToggleHeyCas()
+                  },
+              )
+            }
+            item {
+              QuickActionIcon(
                   icon = Icons.Filled.Public,
                   contentDescription = "Live POV",
                   isSelected = streamUiState.isLivePovSharingEnabled,
@@ -459,7 +473,7 @@ private fun ChatOverlay(
         ) {
           IconButton(
               onClick = { isMenuOpen = !isMenuOpen },
-              enabled = !isDescribeLoading,
+              enabled = true,
           ) {
             Icon(
                 imageVector = if (isMenuOpen) Icons.Filled.ChevronRight else Icons.Filled.Add,
@@ -488,7 +502,7 @@ private fun ChatOverlay(
                     style = AppTypography.Body,
                 )
               },
-              enabled = !isDescribeLoading,
+              enabled = true,
               keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
               keyboardActions = KeyboardActions(onSend = { submitDraft() }),
               singleLine = false,
@@ -499,7 +513,7 @@ private fun ChatOverlay(
               trailingIcon = {
                 IconButton(
                     onClick = { /* TODO: emoji picker */ },
-                    enabled = !isDescribeLoading,
+                    enabled = true,
                 ) {
                   Icon(
                       imageVector = Icons.Filled.SentimentSatisfiedAlt,

@@ -51,6 +51,7 @@ data class StreamUiState(
     val isLivePovSharingEnabled: Boolean = false,
     val isPeopleCountingEnabled: Boolean = false,
     val peopleCount: Int? = null,
+    val isHeyCasEnabled: Boolean = false,
     val isPeopleCountPageVisible: Boolean = false,
     val peopleCountSnapshot: Bitmap? = null,
     val peopleCountSnapshotCount: Int? = null,

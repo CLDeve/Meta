@@ -70,8 +70,11 @@ Java_com_meta_wearable_dat_externalsampleapps_cameraaccess_stream_NativeYuv_i420
       const int g = clamp8((298 * C - 100 * D - 208 * E + 128) >> 8);
       const int b = clamp8((298 * C + 516 * D + 128) >> 8);
 
-      dst32[oy * outWidth + ox] = 0xFF000000u | (static_cast<uint32_t>(r) << 16) |
-          (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
+      // Android's Bitmap.copyPixelsFromBuffer() for ARGB_8888 expects the buffer in native byte
+      // order. On little-endian devices, the byte order is RGBA, so we pack ABGR into the 32-bit
+      // word so memory becomes R,G,B,A.
+      dst32[oy * outWidth + ox] = 0xFF000000u | (static_cast<uint32_t>(b) << 16) |
+          (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(r);
 
       xAcc += xStep;
     }
@@ -81,4 +84,3 @@ Java_com_meta_wearable_dat_externalsampleapps_cameraaccess_stream_NativeYuv_i420
   env->ReleaseByteArrayElements(i420, reinterpret_cast<jbyte*>(const_cast<uint8_t*>(src)),
                                 JNI_ABORT);
 }
-

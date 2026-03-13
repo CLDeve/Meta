@@ -68,6 +68,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.ByteBuffer
 import java.util.Locale
+import java.util.ArrayDeque
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -201,6 +202,7 @@ class StreamViewModel(
   private var bluetoothNoSpeechFailureCount = 0
   private var suppressNextVoiceError = false
   private var voiceRetryCount: Int = 0
+  private var isWakeWordListening = false
   private var textToSpeech: TextToSpeech? = null
   private var isSpeakingAnswer = false
   private var lastPatrolAlertAtMs: Long = 0L
@@ -218,6 +220,8 @@ class StreamViewModel(
   private var peopleDetectCanvas: Canvas? = null
   private val peopleDetectPaint = Paint(Paint.FILTER_BITMAP_FLAG)
   private val peopleDetectDstRect = Rect()
+  private val pendingDescribeQuestions = ArrayDeque<String>()
+  private var describeJob: Job? = null
 
   init {
     // Collect timer state
@@ -328,7 +332,7 @@ class StreamViewModel(
       canvas.drawBitmap(frame, null, peopleDetectDstRect, peopleDetectPaint)
 
       val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
-      val detections = runCatching { counter.detectPeopleInFront(snapshot) }.getOrDefault(emptyList())
+      val detections = runCatching { counter.detectPeople(snapshot) }.getOrDefault(emptyList())
 
       val normalized =
           detections.map { det ->
@@ -394,82 +398,112 @@ class StreamViewModel(
       return
     }
     appendChatMessage(ChatRole.USER, normalizedQuestion)
-    val intent = routeQuestion(normalizedQuestion)
-    val frame = _uiState.value.videoFrame
-    if (intent == AssistantIntent.VISION && frame == null) {
-      val noFrameError = "No frame available yet"
-      _uiState.update {
-        it.copy(
-            isDescribeLoading = false,
-            describeResult = null,
-            describeError = noFrameError,
-            commandCenterStatus = null,
-            commandCenterError = null,
-        )
-      }
-      appendChatMessage(ChatRole.ASSISTANT, "Error: $noFrameError")
+
+    if (_uiState.value.isDescribeLoading || describeJob?.isActive == true) {
+      pendingDescribeQuestions.addLast(normalizedQuestion)
+      appendChatMessage(ChatRole.ASSISTANT, "Queued. I’ll answer after the current question.")
       return
     }
 
-    viewModelScope.launch {
-      _uiState.update {
-        it.copy(
-            isDescribeLoading = true,
-            describeError = null,
-            describeResult = null,
-            commandCenterStatus = null,
-            commandCenterError = null,
-        )
-      }
+    startDescribe(normalizedQuestion, appendUserMessage = false)
+  }
 
-      val result =
-          runCatching {
-                when (intent) {
-                  AssistantIntent.AIRPORT_INFO -> answerAirportInfo(normalizedQuestion)
-                  AssistantIntent.FLIGHT_INFO -> answerFlightInfo(normalizedQuestion)
-                  AssistantIntent.GATE_INFO -> answerGateInfo(normalizedQuestion)
-                  AssistantIntent.ORG_INFO -> answerOrgInfo(normalizedQuestion)
-                  AssistantIntent.MUSTERING_INFO -> answerMusteringInfo(normalizedQuestion)
-                  AssistantIntent.VISION -> queryOpenAi(checkNotNull(frame), normalizedQuestion)
-                }
-              }
-              .onFailure { Log.e(TAG, "OpenAI describe failed", it) }
-
-      val describeResult = result.getOrNull()
-      val describeError = result.exceptionOrNull()?.message
-      when {
-        !describeResult.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, describeResult)
-        !describeError.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, "Error: $describeError")
-      }
-      val handsFreeEnabled = _uiState.value.isHandsFreeModeEnabled
-      if (!describeResult.isNullOrBlank()) {
-        speakText(describeResult)
-      } else if (!describeError.isNullOrBlank()) {
-        speakText("I could not get an answer right now. Please try again.")
-      }
-      var commandCenterStatus: String? = null
-      var commandCenterError: String? = null
-      runCatching { sendToCommandCenter(normalizedQuestion, describeResult, describeError, frame) }
-          .onSuccess { commandCenterStatus = it }
-          .onFailure {
-            commandCenterError = it.message
-            Log.e(TAG, "Command centre send failed", it)
-          }
-
-      _uiState.update {
-        it.copy(
-            isDescribeLoading = false,
-            describeResult = describeResult,
-            describeError = describeError,
-            commandCenterStatus = commandCenterStatus,
-            commandCenterError = commandCenterError,
-        )
-      }
-
-      if (handsFreeEnabled && !isSpeakingAnswer) {
-        restartHandsFreeListening()
-      }
+  private fun startDescribe(question: String, appendUserMessage: Boolean) {
+    if (appendUserMessage) {
+      appendChatMessage(ChatRole.USER, question)
     }
+    describeJob =
+        viewModelScope.launch {
+          try {
+            val intent = routeQuestion(question)
+            val frame = _uiState.value.videoFrame
+            if (intent == AssistantIntent.VISION && frame == null) {
+              val noFrameError = "No frame available yet"
+              _uiState.update {
+                it.copy(
+                    isDescribeLoading = false,
+                    describeResult = null,
+                    describeError = noFrameError,
+                    commandCenterStatus = null,
+                    commandCenterError = null,
+                )
+              }
+              appendChatMessage(ChatRole.ASSISTANT, "Error: $noFrameError")
+              return@launch
+            }
+
+            _uiState.update {
+              it.copy(
+                  isDescribeLoading = true,
+                  describeError = null,
+                  describeResult = null,
+                  commandCenterStatus = null,
+                  commandCenterError = null,
+              )
+            }
+
+            val result =
+                runCatching {
+                      when (intent) {
+                        AssistantIntent.AIRPORT_INFO -> answerAirportInfo(question)
+                        AssistantIntent.FLIGHT_INFO -> answerFlightInfo(question)
+                        AssistantIntent.GATE_INFO -> answerGateInfo(question)
+                        AssistantIntent.ORG_INFO -> answerOrgInfo(question)
+                        AssistantIntent.MUSTERING_INFO -> answerMusteringInfo(question)
+                        AssistantIntent.VISION -> queryOpenAi(checkNotNull(frame), question)
+                      }
+                    }
+                    .onFailure { Log.e(TAG, "OpenAI describe failed", it) }
+
+            val describeResult = result.getOrNull()
+            val describeError = result.exceptionOrNull()?.message
+            when {
+              !describeResult.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, describeResult)
+              !describeError.isNullOrBlank() -> appendChatMessage(ChatRole.ASSISTANT, "Error: $describeError")
+            }
+            val handsFreeEnabled = _uiState.value.isHandsFreeModeEnabled
+            if (!describeResult.isNullOrBlank()) {
+              speakText(describeResult)
+            } else if (!describeError.isNullOrBlank()) {
+              speakText("I could not get an answer right now. Please try again.")
+            }
+            var commandCenterStatus: String? = null
+            var commandCenterError: String? = null
+            runCatching { sendToCommandCenter(question, describeResult, describeError, frame) }
+                .onSuccess { commandCenterStatus = it }
+                .onFailure {
+                  commandCenterError = it.message
+                  Log.e(TAG, "Command centre send failed", it)
+                }
+
+            _uiState.update {
+              it.copy(
+                  isDescribeLoading = false,
+                  describeResult = describeResult,
+                  describeError = describeError,
+                  commandCenterStatus = commandCenterStatus,
+                  commandCenterError = commandCenterError,
+              )
+            }
+
+            if (handsFreeEnabled && !isSpeakingAnswer) {
+              restartHandsFreeListening()
+            }
+          } finally {
+            describeJob = null
+            startNextQueuedDescribeIfAny()
+            if (_uiState.value.isHeyCasEnabled && !_uiState.value.isHandsFreeModeEnabled && !isSpeakingAnswer) {
+              restartHeyCasListening(250L)
+            }
+          }
+        }
+  }
+
+  private fun startNextQueuedDescribeIfAny() {
+    if (_uiState.value.isDescribeLoading || describeJob?.isActive == true) return
+    if (pendingDescribeQuestions.isEmpty()) return
+    val next = pendingDescribeQuestions.removeFirst()
+    startDescribe(next, appendUserMessage = false)
   }
 
   private fun routeQuestion(question: String): AssistantIntent {
@@ -1300,6 +1334,11 @@ class StreamViewModel(
       return
     }
 
+    // Hands-free and wake-word both use SpeechRecognizer; keep them mutually exclusive.
+    if (_uiState.value.isHeyCasEnabled) {
+      toggleHeyCas(context)
+    }
+
     _uiState.update {
       it.copy(
           isHandsFreeModeEnabled = true,
@@ -1309,6 +1348,163 @@ class StreamViewModel(
       )
     }
     startVoiceDescribe(context)
+  }
+
+  fun toggleHeyCas(context: Context) {
+    val next = !_uiState.value.isHeyCasEnabled
+    if (!next) {
+      stopHeyCasListening()
+      _uiState.update { it.copy(isHeyCasEnabled = false) }
+      return
+    }
+
+    // Wake-word and hands-free both use SpeechRecognizer; keep them mutually exclusive.
+    if (_uiState.value.isHandsFreeModeEnabled) {
+      stopVoiceDescribe(disableHandsFreeMode = true)
+    }
+    _uiState.update { it.copy(isHeyCasEnabled = true, describeError = null, commandCenterStatus = null, commandCenterError = null) }
+    startHeyCasListening(context)
+  }
+
+  private fun stopHeyCasListening() {
+    isWakeWordListening = false
+    suppressNextVoiceError = true
+    speechRecognizer?.stopListening()
+    speechRecognizer?.cancel()
+    clearVoiceAudioRoute()
+    _uiState.update { it.copy(isListening = false) }
+  }
+
+  private fun restartHeyCasListening(delayMs: Long = HANDS_FREE_RESTART_DELAY_MS) {
+    if (!_uiState.value.isHeyCasEnabled) return
+    if (_uiState.value.isHandsFreeModeEnabled) return
+    if (_uiState.value.isDescribeLoading) return
+    if (_uiState.value.isListening) return
+    val context = latestVoiceContext ?: getApplication<Application>().applicationContext
+    viewModelScope.launch {
+      delay(delayMs)
+      if (_uiState.value.isHeyCasEnabled && !_uiState.value.isHandsFreeModeEnabled && !_uiState.value.isListening && !_uiState.value.isDescribeLoading) {
+        startHeyCasListening(context)
+      }
+    }
+  }
+
+  private fun startHeyCasListening(context: Context) {
+    latestVoiceContext = context.applicationContext
+    prepareVoiceAudioRoute(context, preferBluetooth = preferBluetoothVoiceRoute)
+    if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+      _uiState.update {
+        it.copy(
+            voiceHeardText = null,
+            isListening = false,
+            isHeyCasEnabled = false,
+            describeError = "Speech recognition not available",
+        )
+      }
+      return
+    }
+
+    speechRecognizer?.destroy()
+    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+    suppressNextVoiceError = false
+    voiceRetryCount = 0
+    isWakeWordListening = true
+    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault())
+      putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+      putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+      putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+      // Shorter times so we can loop quickly if it doesn't hear the wake word.
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 900L)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L)
+    }
+
+    val wakeRegex = Regex("\\bhey\\s*c\\s*a\\s*s\\b", RegexOption.IGNORE_CASE)
+    val wakeRegexCompact = Regex("\\bhey\\s*cas\\b", RegexOption.IGNORE_CASE)
+
+    val listener =
+        object : RecognitionListener {
+          override fun onReadyForSpeech(params: Bundle?) {
+            _uiState.update { it.copy(isListening = true, voiceHeardText = null, describeError = null) }
+          }
+          override fun onBeginningOfSpeech() {}
+          override fun onRmsChanged(rmsdB: Float) {}
+          override fun onBufferReceived(buffer: ByteArray?) {}
+          override fun onEndOfSpeech() {}
+          override fun onError(error: Int) {
+            if (!isWakeWordListening) return
+            if (suppressNextVoiceError) {
+              suppressNextVoiceError = false
+              _uiState.update { it.copy(isListening = false) }
+              return
+            }
+
+            val isNoSpeechError =
+                error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+
+            _uiState.update { it.copy(isListening = false) }
+            if (_uiState.value.isHeyCasEnabled && isNoSpeechError) {
+              restartHeyCasListening(250L)
+            } else if (_uiState.value.isHeyCasEnabled) {
+              restartHeyCasListening(HANDS_FREE_RECONNECT_DELAY_MS)
+            }
+          }
+
+          override fun onResults(results: Bundle?) {
+            if (!isWakeWordListening) return
+            val text =
+                results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?: ""
+            val normalizedText = text.trim()
+            _uiState.update { it.copy(isListening = false, voiceHeardText = normalizedText.takeIf { it.isNotBlank() }) }
+
+            if (!_uiState.value.isHeyCasEnabled) return
+            if (normalizedText.isBlank()) {
+              restartHeyCasListening(250L)
+              return
+            }
+
+            val hasWake =
+                wakeRegex.containsMatchIn(normalizedText) ||
+                    wakeRegexCompact.containsMatchIn(normalizedText) ||
+                    normalizedText.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "").contains("heycas")
+
+            if (!hasWake) {
+              restartHeyCasListening(200L)
+              return
+            }
+
+            // Remove wake phrase and treat the remainder as the question.
+            val stripped =
+                normalizedText
+                    .replace(wakeRegex, "")
+                    .replace(wakeRegexCompact, "")
+                    .trim()
+                    .trimStart(',', '.', '-', ':', ';')
+                    .trim()
+
+            if (stripped.isNotBlank()) {
+              describeCurrentFrame(stripped)
+            } else {
+              appendChatMessage(ChatRole.ASSISTANT, "Yes?")
+              speakText("Yes?")
+            }
+
+            restartHeyCasListening(450L)
+          }
+
+          override fun onPartialResults(partialResults: Bundle?) {}
+          override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+
+    speechRecognizer?.setRecognitionListener(listener)
+    speechRecognizer?.startListening(intent)
   }
 
   fun startVoiceDescribe(context: Context) {
@@ -1326,6 +1522,7 @@ class StreamViewModel(
       return
     }
 
+    isWakeWordListening = false
     speechRecognizer?.destroy()
     speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
     suppressNextVoiceError = false
@@ -1460,6 +1657,7 @@ class StreamViewModel(
     bluetoothNoSpeechFailureCount = 0
     preferBluetoothVoiceRoute = true
     suppressNextVoiceError = true
+    isWakeWordListening = false
     speechRecognizer?.stopListening()
     speechRecognizer?.cancel()
     clearVoiceAudioRoute()

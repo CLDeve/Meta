@@ -32,18 +32,11 @@ internal class PeopleCounter(context: Context) {
     detector = ObjectDetector.createFromFileAndOptions(context, MODEL_ASSET_NAME, options)
   }
 
-  fun detectPeopleInFront(bitmap: Bitmap): List<PersonDetection> {
+  fun detectPeople(bitmap: Bitmap): List<PersonDetection> {
     if (bitmap.width <= 0 || bitmap.height <= 0) return emptyList()
     val image = TensorImage.fromBitmap(bitmap)
     val results = detector.detect(image)
     if (results.isEmpty()) return emptyList()
-
-    val w = bitmap.width.toFloat()
-    val h = bitmap.height.toFloat()
-    val centerMinX = w * 0.25f
-    val centerMaxX = w * 0.75f
-    val centerMinY = h * 0.20f
-    val centerMaxY = h * 0.90f
 
     val detections = ArrayList<PersonDetection>(results.size)
     for (det in results) {
@@ -52,7 +45,8 @@ internal class PeopleCounter(context: Context) {
       val isPerson =
           categories.any { category ->
             val label = category.label?.lowercase().orEmpty()
-            val matches = label == "person" || label.contains("person")
+            // Some models ship without labels; for COCO models, class index 0 is commonly "person".
+            val matches = label == "person" || label.contains("person") || (label.isBlank() && category.index == 0)
             if (matches) {
               val score = category.score
               bestScore = if (bestScore == null) score else maxOf(bestScore ?: score, score)
@@ -61,17 +55,31 @@ internal class PeopleCounter(context: Context) {
           }
       if (!isPerson) continue
 
+      detections.add(PersonDetection(RectF(det.boundingBox), bestScore))
+    }
+    return detections
+  }
+
+  fun detectPeopleInFront(bitmap: Bitmap): List<PersonDetection> {
+    val people = detectPeople(bitmap)
+    if (people.isEmpty()) return emptyList()
+
+    val w = bitmap.width.toFloat()
+    val h = bitmap.height.toFloat()
+    val centerMinX = w * 0.25f
+    val centerMaxX = w * 0.75f
+    val centerMinY = h * 0.20f
+    val centerMaxY = h * 0.90f
+
+    return people.filter { det ->
       val box = det.boundingBox
       val cx = (box.left + box.right) / 2f
       val cy = (box.top + box.bottom) / 2f
-      if (cx < centerMinX || cx > centerMaxX || cy < centerMinY || cy > centerMaxY) continue
+      if (cx < centerMinX || cx > centerMaxX || cy < centerMinY || cy > centerMaxY) return@filter false
 
-      val area = (box.width() * box.height()).toFloat() / (w * h)
-      if (area < 0.02f) continue
-
-      detections.add(PersonDetection(RectF(box), bestScore))
+      val area = (box.width() * box.height()) / (w * h)
+      area >= 0.015f
     }
-    return detections
   }
 
   fun countPeopleInFront(bitmap: Bitmap): Int = detectPeopleInFront(bitmap).size
