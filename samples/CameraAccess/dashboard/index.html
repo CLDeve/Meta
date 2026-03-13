@@ -91,6 +91,18 @@
       display: inline-block;
     }
 
+    .pill.toggle {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .pill.toggle input {
+      margin: 0;
+      width: 14px;
+      height: 14px;
+      accent-color: #f3f4f6;
+    }
+
     .dot {
       width: 10px;
       height: 10px;
@@ -228,6 +240,10 @@
         <a class="pill link" href="/airspace">Airspace Map</a>
         <a class="pill link" href="/aviationstack">Aviationstack</a>
         <a class="pill link" href="/aviationstack-flights">Aviationstack Flights</a>
+        <label class="pill toggle" title="Speak new answers on this browser (laptop audio)">
+          <input id="speakToggle" type="checkbox" />
+          Speak
+        </label>
         <div class="pill"><span id="liveDot" class="dot"></span><strong id="connState">connecting</strong></div>
         <div class="pill">events: <strong id="eventCount">0</strong></div>
         <div class="pill">last id: <strong id="lastId">0</strong></div>
@@ -245,10 +261,32 @@
     const liveDot = document.getElementById("liveDot");
     const eventCount = document.getElementById("eventCount");
     const lastIdEl = document.getElementById("lastId");
+    const speakToggle = document.getElementById("speakToggle");
 
     const MAX_VISIBLE_CARDS = 100;
     let latestId = 0;
     let total = 0;
+    let lastSpokenId = 0;
+
+    function isSpeakEnabled() {
+      return Boolean(speakToggle?.checked) && "speechSynthesis" in window;
+    }
+
+    function speakText(text) {
+      if (!isSpeakEnabled()) return;
+      const raw = String(text || "").trim();
+      if (!raw) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(raw);
+        utter.rate = 1.0;
+        utter.pitch = 1.0;
+        utter.volume = 1.0;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {
+        // ignore
+      }
+    }
 
     function setConnection(ok, text) {
       connState.textContent = text;
@@ -338,6 +376,14 @@
           latestId = events[events.length - 1].id;
           lastIdEl.textContent = String(latestId);
           prependEvents(events);
+
+          const newest = events[events.length - 1];
+          const newestId = Number(newest?.id) || 0;
+          const answer = newest?.answer || "";
+          if (newestId > lastSpokenId && String(answer).trim()) {
+            lastSpokenId = newestId;
+            speakText(answer);
+          }
         }
 
         setConnection(true, "live");
