@@ -110,12 +110,13 @@ class StreamViewModel(
     private const val MAX_VOICE_RETRIES = 1
     private const val AI_REQUEST_JPEG_QUALITY = 50
     private const val AI_READ_TIMEOUT_MS = 45_000
-    private const val STREAM_FPS = 24
-    private const val PREVIEW_JPEG_QUALITY = 70
-    private const val PREVIEW_MAX_FPS = 1L
-    private const val LIVE_POV_MAX_FPS = 8L
+    private const val STREAM_FPS = 20
+    private const val PREVIEW_JPEG_QUALITY = 55
+    private const val PREVIEW_MAX_FPS = 6L
+    private const val LIVE_POV_MAX_FPS = 6L
     private const val PREVIEW_MIN_FRAME_INTERVAL_MS = 1000L / PREVIEW_MAX_FPS
     private const val LIVE_POV_MIN_FRAME_INTERVAL_MS = 1000L / LIVE_POV_MAX_FPS
+    private const val PREVIEW_MAX_DIM_PX = 960
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
     private const val HANDS_FREE_STOP_MESSAGE = "Hands-free mode stopped."
@@ -132,6 +133,39 @@ class StreamViewModel(
     private const val LOST_FOUND_EVENT_TYPE = "lost_found"
     private const val MAX_CHAT_MESSAGES = 24
     private const val CIOC_PHONE_NUMBER = "91002365"
+    private val COUNTRY_SHORTFORM_SPEECH_MAP =
+        mapOf(
+            "UAE" to "United Arab Emirates",
+            "USA" to "United States",
+            "US" to "United States",
+            "UK" to "United Kingdom",
+            "KSA" to "Kingdom of Saudi Arabia",
+            "PRC" to "People's Republic of China",
+            "SGP" to "Singapore",
+            "SG" to "Singapore",
+            "AUS" to "Australia",
+            "NZ" to "New Zealand",
+        )
+    private val AIRPORT_IATA_COUNTRY_SPEECH_MAP =
+        mapOf(
+            "DPS" to "Indonesia",
+            "SIN" to "Singapore",
+            "KUL" to "Malaysia",
+            "CGK" to "Indonesia",
+            "BKK" to "Thailand",
+            "HKT" to "Thailand",
+            "HKG" to "Hong Kong",
+            "TPE" to "Taiwan",
+            "ICN" to "South Korea",
+            "NRT" to "Japan",
+            "HND" to "Japan",
+            "PVG" to "China",
+            "PEK" to "China",
+            "CAN" to "China",
+            "MNL" to "Philippines",
+            "SYD" to "Australia",
+            "MEL" to "Australia",
+        )
     private val TERMINAL_PATTERN = Regex("\\bT([1-4])\\b", RegexOption.IGNORE_CASE)
     private val FLIGHT_PATTERN = Regex("\\b([A-Z]{2,3}\\s?\\d{1,4}[A-Z]?)\\b", RegexOption.IGNORE_CASE)
     private val GATE_PATTERN = Regex("\\b([A-Z]\\d{1,2}[A-Z]?)\\b", RegexOption.IGNORE_CASE)
@@ -167,6 +201,13 @@ class StreamViewModel(
   private var lastPatrolAlertAtMs: Long = 0L
   private var lastPatrolAlertText: String? = null
   private var livePovClient: WebRtcClient? = null
+  private var i420FrameBuffer = ByteArray(0)
+  private var nv21FrameBuffer = ByteArray(0)
+  private val previewJpegBuffer = ReusableByteArrayOutputStream(256 * 1024)
+  private val previewDecodeOptions =
+      BitmapFactory.Options().apply {
+        inPreferredConfig = Bitmap.Config.RGB_565
+      }
 
   init {
     // Collect timer state
@@ -513,12 +554,12 @@ class StreamViewModel(
     }
     val live = root.optJSONObject("live")
     val snapshot = root.optJSONObject("snapshot")
-    val flight = snapshot?.optString("flightNo").orEmpty()
-    val destination = snapshot?.optString("destination").orEmpty()
-    val status = snapshot?.optString("status").orEmpty()
-    val latestQuestion = live?.optString("question").orEmpty()
-    val latestAnswer = live?.optString("answer").orEmpty()
-    val latestError = live?.optString("aiError").orEmpty()
+    val flight = cleanBackendText(snapshot?.optString("flightNo"))
+    val destination = cleanBackendText(snapshot?.optString("destination"))
+    val status = cleanBackendText(snapshot?.optString("status"))
+    val latestQuestion = cleanBackendText(live?.optString("question"))
+    val latestAnswer = cleanBackendText(live?.optString("answer"))
+    val latestError = cleanBackendText(live?.optString("aiError"))
     return@withContext when {
       latestError.isNotBlank() ->
           "Gate $gate has a recent alert but the last AI check failed: $latestError"
@@ -530,6 +571,13 @@ class StreamViewModel(
           "Gate $gate is associated with ${if (flight.isNotBlank()) flight else "a scheduled flight"}${if (destination.isNotBlank()) " to $destination" else ""}. Current status: ${if (status.isNotBlank()) status else "unavailable"}."
       else -> "I found gate $gate, but there is no recent live activity."
     }
+  }
+
+  private fun cleanBackendText(value: String?): String {
+    if (value == null) return ""
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return ""
+    return if (trimmed.equals("null", ignoreCase = true)) "" else trimmed
   }
 
   private fun answerOrgInfo(question: String): String {
@@ -793,8 +841,9 @@ class StreamViewModel(
     appendChatMessage(ChatRole.ASSISTANT, LIVE_POV_START_MESSAGE)
     speakText(LIVE_POV_START_MESSAGE)
     val appContext = getApplication<Application>().applicationContext
-    livePovClient =
-        WebRtcClient(
+    viewModelScope.launch(Dispatchers.IO) {
+      runCatching {
+            WebRtcClient(
                 context = appContext,
                 signalingUrl = BuildConfig.LIVE_POV_SIGNALING_URL,
                 room = BuildConfig.LIVE_POV_ROOM,
@@ -819,7 +868,28 @@ class StreamViewModel(
                       }
                     },
             )
-            .also { it.start() }
+          }
+          .onSuccess { client ->
+            if (!_uiState.value.isLivePovSharingEnabled) {
+              client.stop()
+              return@onSuccess
+            }
+            livePovClient = client
+            client.start()
+          }
+          .onFailure { error ->
+            Log.e(TAG, "Failed to start Live POV client", error)
+            val message = error.message ?: "Unknown error while starting Live P O V sharing."
+            _uiState.update {
+              it.copy(
+                  isLivePovSharingEnabled = false,
+                  describeError = message,
+                  commandCenterError = message,
+                  commandCenterStatus = null,
+              )
+            }
+          }
+    }
     return true
   }
 
@@ -1710,11 +1780,13 @@ class StreamViewModel(
 
   private fun speakText(text: String) {
     val app = getApplication<Application>()
+    val speechText = expandCountryShortformsForSpeech(text)
+    Log.d(TAG, "TTS input='$text' normalized='$speechText'")
     val existing = textToSpeech
     if (existing != null) {
       ensureTtsProgressListener(existing)
       isSpeakingAnswer = true
-      existing.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
+      existing.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
       return
     }
 
@@ -1729,12 +1801,30 @@ class StreamViewModel(
               engine.setLanguage(Locale.US)
             }
             isSpeakingAnswer = true
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
+            engine.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "cameraaccess-reply")
           } else {
             Log.w(TAG, "TextToSpeech initialization failed: $status")
             isSpeakingAnswer = false
           }
         }
+  }
+
+  private fun expandCountryShortformsForSpeech(input: String): String {
+    var normalized =
+        input
+            .replace(Regex("\\bU\\.S\\.A\\.?\\b"), "United States")
+            .replace(Regex("\\bU\\.S\\.?\\b"), "United States")
+            .replace(Regex("\\bU\\.K\\.?\\b"), "United Kingdom")
+    AIRPORT_IATA_COUNTRY_SPEECH_MAP.forEach { (iata, country) ->
+      normalized =
+          normalized
+              .replace(Regex("(?i)(?<![A-Za-z])$iata(?![A-Za-z])"), country)
+              .replace(Regex("(?i)(?<![A-Za-z])${iata[0]}\\s*\\.?\\s*${iata[1]}\\s*\\.?\\s*${iata[2]}(?![A-Za-z])"), country)
+    }
+    return Regex("\\b[A-Za-z]{2,4}\\b").replace(normalized) { match ->
+      val token = match.value.uppercase(Locale.ROOT)
+      COUNTRY_SHORTFORM_SPEECH_MAP[token] ?: match.value
+    }
   }
 
   private fun ensureTtsProgressListener(engine: TextToSpeech) {
@@ -1782,28 +1872,44 @@ class StreamViewModel(
     // VideoFrame contains raw I420 video data in a ByteBuffer
     val buffer = videoFrame.buffer
     val dataSize = buffer.remaining()
-    val byteArray = ByteArray(dataSize)
+    if (i420FrameBuffer.size < dataSize) {
+      i420FrameBuffer = ByteArray(dataSize)
+    }
 
     // Save current position
     val originalPosition = buffer.position()
-    buffer.get(byteArray)
+    buffer.get(i420FrameBuffer, 0, dataSize)
     // Restore position
     buffer.position(originalPosition)
 
     // Convert I420 to NV21 format which is supported by Android's YuvImage
-    val nv21 = convertI420toNV21(byteArray, videoFrame.width, videoFrame.height)
-    val image = YuvImage(nv21, ImageFormat.NV21, videoFrame.width, videoFrame.height, null)
-    val out =
-        ByteArrayOutputStream().use { stream ->
-          image.compressToJpeg(
-              Rect(0, 0, videoFrame.width, videoFrame.height),
-              PREVIEW_JPEG_QUALITY,
-              stream,
-          )
-          stream.toByteArray()
-        }
+    val nv21Size = videoFrame.width * videoFrame.height * 3 / 2
+    if (nv21FrameBuffer.size < nv21Size) {
+      nv21FrameBuffer = ByteArray(nv21Size)
+    }
+    convertI420toNV21(i420FrameBuffer, nv21FrameBuffer, videoFrame.width, videoFrame.height)
+    val image = YuvImage(nv21FrameBuffer, ImageFormat.NV21, videoFrame.width, videoFrame.height, null)
+    previewJpegBuffer.reset()
+    image.compressToJpeg(
+        Rect(0, 0, videoFrame.width, videoFrame.height),
+        PREVIEW_JPEG_QUALITY,
+        previewJpegBuffer,
+    )
 
-    val bitmap = BitmapFactory.decodeByteArray(out, 0, out.size)
+    val maxDim = maxOf(videoFrame.width, videoFrame.height)
+    var sampleSize = 1
+    while (maxDim / sampleSize > PREVIEW_MAX_DIM_PX) {
+      sampleSize *= 2
+    }
+    previewDecodeOptions.inSampleSize = sampleSize
+
+    val bitmap =
+        BitmapFactory.decodeByteArray(
+            previewJpegBuffer.buffer(),
+            0,
+            previewJpegBuffer.length(),
+            previewDecodeOptions,
+        )
     _uiState.update { it.copy(videoFrame = bitmap) }
     if (livePovEnabled && bitmap != null && nowMs - lastLivePovFrameAtMs >= LIVE_POV_MIN_FRAME_INTERVAL_MS) {
       lastLivePovFrameAtMs = nowMs
@@ -1818,8 +1924,7 @@ class StreamViewModel(
       }
 
   // Convert I420 (YYYYYYYY:UUVV) to NV21 (YYYYYYYY:VUVU)
-  private fun convertI420toNV21(input: ByteArray, width: Int, height: Int): ByteArray {
-    val output = ByteArray(input.size)
+  private fun convertI420toNV21(input: ByteArray, output: ByteArray, width: Int, height: Int) {
     val size = width * height
     val quarter = size / 4
 
@@ -1829,7 +1934,12 @@ class StreamViewModel(
       output[size + n * 2] = input[size + quarter + n] // V first
       output[size + n * 2 + 1] = input[size + n] // U second
     }
-    return output
+  }
+
+  private class ReusableByteArrayOutputStream(initialCapacity: Int) : ByteArrayOutputStream(initialCapacity) {
+    fun buffer(): ByteArray = buf
+
+    fun length(): Int = count
   }
 
   private fun handlePhotoData(photo: PhotoData) {
