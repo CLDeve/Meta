@@ -72,7 +72,17 @@ class SignalingClient(
               }
 
               override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                listener.onError(t.message ?: "Signaling connection failed")
+                if (response != null) {
+                  val hint =
+                      when (response.code) {
+                        503 -> " (service unavailable — if using Render, the service may be sleeping or suspended)"
+                        404 -> " (check the /ws path and URL)"
+                        else -> ""
+                      }
+                  listener.onError("Live POV signaling failed: HTTP ${response.code}${hint}")
+                  return
+                }
+                listener.onError(t.message ?: "Live POV signaling connection failed")
               }
             },
         )
