@@ -278,12 +278,18 @@
       liveDot.className = "dot " + (kind || "");
     }
 
+    const SIGNALING_BASE = "cameraaccess-live-pov.onrender.com";
+    const SIGNALING_ROOM = new URLSearchParams(window.location.search).get("room") || "cameraaccess";
+
     let model = null;
-    let lastFrameKey = "";
     let lastDetectAt = 0;
     let detectInFlight = false;
     let lastDetectFrameT0 = 0;
     let useLivePov = true;
+
+    let pc = null;
+    let ws = null;
+    let lastFrameAtMs = 0;
 
     async function loadModel() {
       try {
@@ -300,6 +306,121 @@
         statusText.textContent = `Model load failed: ${e.message}`;
         hint.textContent = "If your network blocks jsdelivr, this page won't be able to load the model.";
       }
+    }
+
+    async function fetchIceServers() {
+      try {
+        const resp = await fetch(`https://${SIGNALING_BASE}/api/turn`, { cache: "no-store", mode: "cors" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const payload = await resp.json();
+        const servers = payload && payload.iceServers;
+        if (Array.isArray(servers) && servers.length) return servers;
+      } catch (_) {}
+      return [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+    }
+
+    async function ensurePc() {
+      if (pc) return pc;
+      const iceServers = await fetchIceServers();
+      pc = new RTCPeerConnection({ iceServers });
+      pc.onicecandidate = (event) => {
+        if (!event.candidate || !ws) return;
+        ws.send(JSON.stringify({
+          type: "ice",
+          room: SIGNALING_ROOM,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex,
+          candidate: event.candidate.candidate,
+        }));
+      };
+      pc.ondatachannel = (event) => {
+        const channel = event.channel;
+        channel.binaryType = "arraybuffer";
+        channel.onopen = () => {
+          setLiveState("live", "ok");
+          statusText.textContent = "Receiving frames (WebRTC data channel)";
+        };
+        channel.onmessage = (message) => {
+          if (!(message.data instanceof ArrayBuffer)) return;
+          lastFrameAtMs = Date.now();
+          const blob = new Blob([message.data], { type: "image/jpeg" });
+          frameEl.src = URL.createObjectURL(blob);
+          updatedAt.textContent = new Date().toLocaleString();
+          sourceEl.textContent = SIGNALING_BASE;
+        };
+      };
+      pc.onconnectionstatechange = () => {
+        const state = pc.connectionState || "";
+        if (state === "failed" || state === "disconnected") {
+          setLiveState(state || "error", "warn");
+        }
+      };
+      return pc;
+    }
+
+    function closeLive() {
+      try { ws && ws.close(1000, "done"); } catch (_) {}
+      try { pc && pc.close(); } catch (_) {}
+      ws = null;
+      pc = null;
+    }
+
+    async function startLivePov() {
+      if (!useLivePov) return;
+      closeLive();
+      setLiveState("connecting", "");
+      statusText.textContent = "Connecting to Live POV signaling…";
+
+      const wsUrl = `wss://${SIGNALING_BASE}/ws`;
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        setLiveState("waiting", "");
+        statusText.textContent = "Waiting for broadcaster…";
+        ws.send(JSON.stringify({ type: "join", room: SIGNALING_ROOM, role: "viewer" }));
+      };
+      ws.onmessage = async (event) => {
+        let message;
+        try { message = JSON.parse(event.data); } catch (_) { return; }
+        if (message.type === "offer") {
+          const currentPc = await ensurePc();
+          await currentPc.setRemoteDescription({ type: "offer", sdp: message.sdp });
+          const answer = await currentPc.createAnswer();
+          await currentPc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "answer", room: SIGNALING_ROOM, sdp: answer.sdp }));
+          statusText.textContent = "Negotiated WebRTC session";
+          viewer.style.display = "block";
+          empty.style.display = "none";
+          return;
+        }
+        if (message.type === "ice") {
+          if (!pc) return;
+          await pc.addIceCandidate({
+            sdpMid: message.sdpMid,
+            sdpMLineIndex: message.sdpMLineIndex,
+            candidate: message.candidate,
+          });
+          return;
+        }
+        if (message.type === "peer-left") {
+          setLiveState("waiting", "");
+          statusText.textContent = "Broadcaster disconnected";
+          return;
+        }
+        if (message.type === "error") {
+          setLiveState("error", "warn");
+          statusText.textContent = message.message || "Signaling error";
+          if ((message.message || "").toLowerCase().includes("viewer already connected")) {
+            hint.textContent = "Another viewer tab is already connected. Close it, then refresh this page.";
+          }
+        }
+      };
+      ws.onerror = () => {
+        setLiveState("error", "warn");
+        statusText.textContent = "WebSocket signaling failed";
+      };
+      ws.onclose = () => {
+        // Keep UI stable; the auto-reconnect loop handles retries.
+      };
     }
 
     function resizeOverlayToFrame() {
@@ -369,40 +490,6 @@
       }
     }
 
-    async function refreshLivePov() {
-      if (!useLivePov) return;
-      try {
-        const resp = await fetch("/api/live-pov", { cache: "no-store" });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const payload = await resp.json();
-        const item = payload.item;
-        if (!item || !item.frameJpegBase64) {
-          viewer.style.display = "none";
-          empty.style.display = "block";
-          setLiveState("waiting", "");
-          hint.textContent = "Waiting for /api/live-pov to return frames…";
-          return;
-        }
-
-        const key = `${item.receivedAtIso || ""}|${item.frameSha256 || ""}|${(item.frameJpegBase64 || "").length}`;
-        if (key !== lastFrameKey) {
-          lastFrameKey = key;
-          frameEl.src = `data:${item.imageMimeType || "image/jpeg"};base64,${item.frameJpegBase64}`;
-        }
-
-        updatedAt.textContent = formatTime(item.receivedAtIso);
-        sourceEl.textContent = item.source || "meta-wearables-cameraaccess";
-        statusText.textContent = item.answer || "Live POV frame update";
-        viewer.style.display = "block";
-        empty.style.display = "none";
-        setLiveState("live", "ok");
-      } catch (error) {
-        setLiveState("error", "warn");
-        empty.style.display = "block";
-        empty.textContent = `Failed to load live POV: ${error.message}`;
-      }
-    }
-
     function showLocalImage(url) {
       useLivePov = false;
       useLiveBtn.style.display = "inline-flex";
@@ -410,7 +497,7 @@
       statusText.textContent = "Using uploaded image (not Live POV).";
       viewer.style.display = "block";
       empty.style.display = "none";
-      lastFrameKey = "";
+      closeLive();
       frameEl.src = url;
     }
 
@@ -425,8 +512,8 @@
     useLiveBtn.addEventListener("click", () => {
       useLivePov = true;
       useLiveBtn.style.display = "none";
-      setLiveState("waiting", "");
-      refreshLivePov();
+      hint.textContent = "";
+      startLivePov();
     });
 
     cadenceInput.addEventListener("input", () => {
@@ -441,8 +528,24 @@
     });
 
     loadModel();
-    refreshLivePov();
-    setInterval(refreshLivePov, 800);
+    startLivePov();
+    setInterval(() => {
+      if (!useLivePov) return;
+      const now = Date.now();
+      // If we haven't received any frames for a while, show the empty state.
+      if (lastFrameAtMs === 0 || (now - lastFrameAtMs > 5000)) {
+        viewer.style.display = "none";
+        empty.style.display = "block";
+        hint.textContent = "Waiting for broadcaster… (start Live POV from the phone app)";
+      }
+    }, 1200);
+    // Reconnect signaling periodically if nothing is flowing.
+    setInterval(() => {
+      if (!useLivePov) return;
+      if (!ws || ws.readyState === WebSocket.CLOSED) {
+        startLivePov();
+      }
+    }, 6000);
     setInterval(detectPeopleIfReady, 120);
   </script>
 </body>
