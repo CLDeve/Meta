@@ -105,6 +105,25 @@ const server = http.createServer((req, res) => {
   if (reqUrl.pathname === "/" || reqUrl.pathname === "/viewer" || reqUrl.pathname === "/viewer.html") {
     return serveFile(res, path.join(__dirname, "viewer.html"), "text/html; charset=utf-8");
   }
+  if (reqUrl.pathname === "/healthz") {
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+  if (reqUrl.pathname === "/api/status") {
+    const roomName = String(reqUrl.searchParams.get("room") || "cameraaccess").trim();
+    const room = rooms.get(roomName) || { broadcaster: null, viewer: null };
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(
+      JSON.stringify({
+        ok: true,
+        room: roomName,
+        hasBroadcaster: Boolean(room.broadcaster),
+        hasViewer: Boolean(room.viewer),
+      }),
+    );
+    return;
+  }
   if (reqUrl.pathname === "/api/turn") {
     const iceServers = [
       { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
