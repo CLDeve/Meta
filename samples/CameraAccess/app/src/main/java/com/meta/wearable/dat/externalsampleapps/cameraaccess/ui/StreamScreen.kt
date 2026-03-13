@@ -95,6 +95,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.RecordVoiceOver
@@ -163,6 +164,37 @@ fun StreamScreen(
                     .clip(previewShape),
             contentScale = ContentScale.Crop,
         )
+        if (streamUiState.isLiveBoxesEnabled && streamUiState.livePeopleBoxes.isNotEmpty()) {
+          Canvas(modifier = Modifier.fillMaxSize().clip(previewShape)) {
+            val dstW = size.width
+            val dstH = size.height
+            val srcW = currentFrame.width.toFloat().coerceAtLeast(1f)
+            val srcH = currentFrame.height.toFloat().coerceAtLeast(1f)
+            val scale = maxOf(dstW / srcW, dstH / srcH)
+            val dispW = srcW * scale
+            val dispH = srcH * scale
+            val dx = (dstW - dispW) / 2f
+            val dy = (dstH - dispH) / 2f
+
+            val stroke = Stroke(width = 3.dp.toPx())
+            streamUiState.livePeopleBoxes.forEach { b ->
+              val left = dx + (b.left * dispW)
+              val top = dy + (b.top * dispH)
+              val right = dx + (b.right * dispW)
+              val bottom = dy + (b.bottom * dispH)
+              drawRect(
+                  color = Color(0xFFFFD000),
+                  topLeft = androidx.compose.ui.geometry.Offset(left, top),
+                  size =
+                      androidx.compose.ui.geometry.Size(
+                          (right - left).coerceAtLeast(0f),
+                          (bottom - top).coerceAtLeast(0f),
+                      ),
+                  style = stroke,
+              )
+            }
+          }
+        }
       } ?: Surface(
           modifier =
               Modifier.fillMaxSize()
@@ -228,6 +260,7 @@ fun StreamScreen(
         onCapturePhoto = { streamViewModel.capturePhoto() },
         onOpenPeopleCountPage = { streamViewModel.showPeopleCountPage() },
         onToggleHeyCas = { streamViewModel.toggleHeyCas(context) },
+        onToggleLiveBoxes = { streamViewModel.toggleLiveBoxes() },
         onToggleLivePov = { streamViewModel.toggleLivePovSharing() },
         onTogglePatrol = { streamViewModel.togglePatrolMode() },
         onStopStream = {
@@ -297,6 +330,7 @@ private fun ChatOverlay(
     onCapturePhoto: () -> Unit,
     onOpenPeopleCountPage: () -> Unit,
     onToggleHeyCas: () -> Unit,
+    onToggleLiveBoxes: () -> Unit,
     onToggleLivePov: () -> Unit,
     onTogglePatrol: () -> Unit,
     onStopStream: () -> Unit,
@@ -433,6 +467,17 @@ private fun ChatOverlay(
                   onClick = {
                     isMenuOpen = false
                     onToggleHeyCas()
+                  },
+              )
+            }
+            item {
+              QuickActionIcon(
+                  icon = Icons.Filled.CropFree,
+                  contentDescription = "Live boxes",
+                  isSelected = streamUiState.isLiveBoxesEnabled,
+                  onClick = {
+                    isMenuOpen = false
+                    onToggleLiveBoxes()
                   },
               )
             }

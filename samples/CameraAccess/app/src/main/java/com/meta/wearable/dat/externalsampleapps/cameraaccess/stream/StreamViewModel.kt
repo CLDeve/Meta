@@ -307,7 +307,18 @@ class StreamViewModel(
 
   fun togglePeopleCounting() {
     val next = !_uiState.value.isPeopleCountingEnabled
-    _uiState.update { it.copy(isPeopleCountingEnabled = next, peopleCount = if (next) it.peopleCount else null) }
+    _uiState.update {
+      it.copy(
+          isPeopleCountingEnabled = next,
+          peopleCount = if (next) it.peopleCount else null,
+          livePeopleBoxes = if (next || it.isLiveBoxesEnabled) it.livePeopleBoxes else emptyList(),
+      )
+    }
+  }
+
+  fun toggleLiveBoxes() {
+    val next = !_uiState.value.isLiveBoxesEnabled
+    _uiState.update { it.copy(isLiveBoxesEnabled = next, livePeopleBoxes = if (next) it.livePeopleBoxes else emptyList()) }
   }
 
   fun showPeopleCountPage() {
@@ -2214,7 +2225,8 @@ class StreamViewModel(
     }
 
     val peopleCountingEnabled = _uiState.value.isPeopleCountingEnabled
-    if (peopleCountingEnabled &&
+    val liveBoxesEnabled = _uiState.value.isLiveBoxesEnabled
+    if ((peopleCountingEnabled || liveBoxesEnabled) &&
         nowMs - lastPeopleDetectAtMs >= PEOPLE_DETECT_INTERVAL_MS &&
         (peopleDetectJob?.isActive != true)
     ) {
@@ -2239,8 +2251,29 @@ class StreamViewModel(
             canvas.drawBitmap(bitmap, null, peopleDetectDstRect, peopleDetectPaint)
 
             val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
-            val count = runCatching { counter.countPeopleInFront(detectBitmap) }.getOrDefault(0)
-            _uiState.update { it.copy(peopleCount = count) }
+            val detections = runCatching { counter.detectPeople(detectBitmap) }.getOrDefault(emptyList())
+            val countInFront = if (peopleCountingEnabled) runCatching { counter.detectPeopleInFront(detectBitmap).size }.getOrDefault(0) else null
+            val boxes =
+                if (liveBoxesEnabled) {
+                  detections.map { det ->
+                    val box = det.boundingBox
+                    NormalizedBox(
+                        left = (box.left / targetWidth.toFloat()).coerceIn(0f, 1f),
+                        top = (box.top / targetHeight.toFloat()).coerceIn(0f, 1f),
+                        right = (box.right / targetWidth.toFloat()).coerceIn(0f, 1f),
+                        bottom = (box.bottom / targetHeight.toFloat()).coerceIn(0f, 1f),
+                        score = det.score,
+                    )
+                  }
+                } else {
+                  emptyList()
+                }
+            _uiState.update {
+              it.copy(
+                  peopleCount = if (peopleCountingEnabled) countInFront else it.peopleCount,
+                  livePeopleBoxes = boxes,
+              )
+            }
           }
     }
   }
