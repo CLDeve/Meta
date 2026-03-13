@@ -174,11 +174,14 @@
     <section class="topbar">
       <div>
         <h1 class="title">People Count</h1>
-        <p class="subtitle">Counts “person” in the Live POV stream (browser-side). Best effort, not safety-certified.</p>
+        <p class="subtitle">Counts “person” in the Live POV stream (browser-side). If Live POV is empty, use “Test image”.</p>
       </div>
       <div class="controls">
         <span class="pill"><span id="modelDot" class="dot warn"></span><span id="modelState">model: loading</span></span>
         <span class="pill"><span id="liveDot" class="dot"></span><span id="liveState">stream: waiting</span></span>
+        <input id="fileInput" type="file" accept="image/*" style="display:none;" />
+        <button id="testImageBtn" class="pill" style="cursor:pointer;border:1px solid var(--border);">Test image</button>
+        <button id="useLiveBtn" class="pill" style="cursor:pointer;border:1px solid var(--border);display:none;">Use Live POV</button>
         <label class="pill" style="pointer-events:auto;">
           <input id="detectToggle" type="checkbox" checked />
           Detect
@@ -218,7 +221,14 @@
       </div>
     </section>
 
-    <section id="empty" class="empty">No live POV stream yet. Say “share live POV” in the app to begin.</section>
+    <section id="empty" class="empty">
+      <div style="font-size:16px;color:var(--text);margin-bottom:10px;">No Live POV frames yet.</div>
+      <div style="max-width:760px;margin:0 auto;line-height:1.55;">
+        Open <a href="/live-pov" style="color:var(--text);">Live POV</a> to confirm the stream is working, then start sharing from the phone app (voice: “share live POV”).
+        If you just want to see the counter working, click <strong>Test image</strong>.
+      </div>
+      <div id="hint" style="margin-top:14px;color:var(--muted);font-size:13px;"></div>
+    </section>
   </div>
 
   <!-- TensorFlow.js + COCO-SSD (UMD globals: tf + cocoSsd). -->
@@ -246,6 +256,10 @@
     const detectToggle = document.getElementById("detectToggle");
     const cadenceInput = document.getElementById("cadence");
     const cadenceLabel = document.getElementById("cadenceLabel");
+    const fileInput = document.getElementById("fileInput");
+    const testImageBtn = document.getElementById("testImageBtn");
+    const useLiveBtn = document.getElementById("useLiveBtn");
+    const hint = document.getElementById("hint");
 
     function formatTime(value) {
       if (!value) return "-";
@@ -269,12 +283,13 @@
     let lastDetectAt = 0;
     let detectInFlight = false;
     let lastDetectFrameT0 = 0;
+    let useLivePov = true;
 
     async function loadModel() {
       try {
         setModelState("loading", "warn");
         if (!window.tf || !window.cocoSsd) {
-          throw new Error("TensorFlow.js scripts failed to load");
+          throw new Error("TensorFlow.js scripts failed to load (check adblock / network)");
         }
         // Force eager init so first detect is less janky.
         await tf.ready();
@@ -283,6 +298,7 @@
       } catch (e) {
         setModelState("error", "warn");
         statusText.textContent = `Model load failed: ${e.message}`;
+        hint.textContent = "If your network blocks jsdelivr, this page won't be able to load the model.";
       }
     }
 
@@ -354,6 +370,7 @@
     }
 
     async function refreshLivePov() {
+      if (!useLivePov) return;
       try {
         const resp = await fetch("/api/live-pov", { cache: "no-store" });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -363,6 +380,7 @@
           viewer.style.display = "none";
           empty.style.display = "block";
           setLiveState("waiting", "");
+          hint.textContent = "Waiting for /api/live-pov to return frames…";
           return;
         }
 
@@ -385,6 +403,32 @@
       }
     }
 
+    function showLocalImage(url) {
+      useLivePov = false;
+      useLiveBtn.style.display = "inline-flex";
+      setLiveState("local image", "ok");
+      statusText.textContent = "Using uploaded image (not Live POV).";
+      viewer.style.display = "block";
+      empty.style.display = "none";
+      lastFrameKey = "";
+      frameEl.src = url;
+    }
+
+    testImageBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      showLocalImage(url);
+    });
+
+    useLiveBtn.addEventListener("click", () => {
+      useLivePov = true;
+      useLiveBtn.style.display = "none";
+      setLiveState("waiting", "");
+      refreshLivePov();
+    });
+
     cadenceInput.addEventListener("input", () => {
       cadenceLabel.textContent = `${cadenceInput.value}ms`;
     });
@@ -403,4 +447,3 @@
   </script>
 </body>
 </html>
-
