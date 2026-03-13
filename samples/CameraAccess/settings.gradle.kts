@@ -40,6 +40,10 @@ dependencyResolutionManagement {
     mavenCentral()
     maven {
       url = uri("https://maven.pkg.github.com/facebook/meta-wearables-dat-android")
+      content {
+        // Only Meta Wearables artifacts live in this GitHub Packages repo.
+        includeGroup("com.meta.wearable")
+      }
       credentials {
         username = "" // not needed
         password = System.getenv("GITHUB_TOKEN") ?: localProperties.getProperty("github_token")

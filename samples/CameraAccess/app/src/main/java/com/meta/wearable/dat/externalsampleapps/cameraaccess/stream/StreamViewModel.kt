@@ -64,7 +64,6 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -206,7 +205,7 @@ class StreamViewModel(
   private var previewBitmapA: Bitmap? = null
   private var previewBitmapB: Bitmap? = null
   private var previewBitmapWriteIsA = true
-  private var previewRgb565Buffer: ByteBuffer? = null
+  private var previewArgbBuffer: ByteBuffer? = null
 
   init {
     // Collect timer state
@@ -1897,34 +1896,32 @@ class StreamViewModel(
           if (current?.width == outWidth && current.height == outHeight) current
           else {
             current?.recycle()
-            Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.RGB_565).also { previewBitmapA = it }
+            Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888).also { previewBitmapA = it }
           }
         } else {
           val current = previewBitmapB
           if (current?.width == outWidth && current.height == outHeight) current
           else {
             current?.recycle()
-            Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.RGB_565).also { previewBitmapB = it }
+            Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888).also { previewBitmapB = it }
           }
         }
 
-    val neededBytes = outWidth * outHeight * 2
-    val rgbBuffer =
-        previewRgb565Buffer?.takeIf { it.capacity() == neededBytes }
-            ?: ByteBuffer.allocateDirect(neededBytes).order(ByteOrder.nativeOrder()).also {
-              previewRgb565Buffer = it
-            }
-    rgbBuffer.clear()
-    renderI420BytesToRgb565(
+    val neededBytes = outWidth * outHeight * 4
+    val argbBuffer =
+        previewArgbBuffer?.takeIf { it.capacity() == neededBytes }
+            ?: ByteBuffer.allocateDirect(neededBytes).also { previewArgbBuffer = it }
+    argbBuffer.clear()
+    NativeYuv.i420ToArgb(
         i420 = i420FrameBuffer,
         width = videoFrame.width,
         height = videoFrame.height,
-        out = rgbBuffer,
+        outBuffer = argbBuffer,
         outWidth = outWidth,
         outHeight = outHeight,
     )
-    rgbBuffer.flip()
-    bitmap.copyPixelsFromBuffer(rgbBuffer)
+    argbBuffer.rewind()
+    bitmap.copyPixelsFromBuffer(argbBuffer)
 
     previewBitmapWriteIsA = !previewBitmapWriteIsA
     _uiState.update { it.copy(videoFrame = bitmap) }
@@ -1938,70 +1935,6 @@ class StreamViewModel(
       ByteArrayOutputStream().use { stream ->
         bitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
         Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
-      }
-
-  private fun renderI420BytesToRgb565(
-      i420: ByteArray,
-      width: Int,
-      height: Int,
-      out: ByteBuffer,
-      outWidth: Int,
-      outHeight: Int,
-  ) {
-    if (width <= 0 || height <= 0 || outWidth <= 0 || outHeight <= 0) return
-
-    val yPlaneSize = width * height
-    val uvWidth = width / 2
-    val uvHeight = height / 2
-    val uvPlaneSize = uvWidth * uvHeight
-    val uPlaneOffset = yPlaneSize
-    val vPlaneOffset = yPlaneSize + uvPlaneSize
-    val expectedMinSize = vPlaneOffset + uvPlaneSize
-    if (uvWidth <= 0 || uvHeight <= 0 || i420.size < expectedMinSize) return
-
-    val xStep = ((width shl 16) / outWidth).coerceAtLeast(1)
-    val yStep = ((height shl 16) / outHeight).coerceAtLeast(1)
-    var yAcc = 0
-
-    for (oy in 0 until outHeight) {
-      val iy = (yAcc ushr 16).coerceIn(0, height - 1)
-      val uvY = (iy shr 1).coerceIn(0, uvHeight - 1)
-      val yRowOffset = iy * width
-      val uvRowOffset = uvY * uvWidth
-
-      var xAcc = 0
-      for (ox in 0 until outWidth) {
-        val ix = (xAcc ushr 16).coerceIn(0, width - 1)
-        val uvX = (ix shr 1).coerceIn(0, uvWidth - 1)
-        val yIndex = yRowOffset + ix
-        val uvIndex = uvRowOffset + uvX
-
-        val y = i420[yIndex].toInt() and 0xFF
-        val u = i420[uPlaneOffset + uvIndex].toInt() and 0xFF
-        val v = i420[vPlaneOffset + uvIndex].toInt() and 0xFF
-
-        val c = y - 16
-        val d = u - 128
-        val e = v - 128
-
-        val r = clampTo8Bit((298 * c + 409 * e + 128) shr 8)
-        val g = clampTo8Bit((298 * c - 100 * d - 208 * e + 128) shr 8)
-        val b = clampTo8Bit((298 * c + 516 * d + 128) shr 8)
-
-        val rgb565 = ((r and 0xF8) shl 8) or ((g and 0xFC) shl 3) or (b ushr 3)
-        out.putShort(rgb565.toShort())
-
-        xAcc += xStep
-      }
-      yAcc += yStep
-    }
-  }
-
-  private fun clampTo8Bit(value: Int): Int =
-      when {
-        value < 0 -> 0
-        value > 255 -> 255
-        else -> value
       }
 
   private fun handlePhotoData(photo: PhotoData) {
