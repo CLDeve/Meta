@@ -41,6 +41,8 @@ data class StreamUiState(
     val isHandsFreeModeEnabled: Boolean = false,
     val isPatrolModeEnabled: Boolean = false,
     val isLivePovSharingEnabled: Boolean = false,
+    val isPeopleCountingEnabled: Boolean = false,
+    val peopleCount: Int? = null,
     val voiceHeardText: String? = null,
     val chatMessages: List<ChatMessage> = emptyList(),
 )

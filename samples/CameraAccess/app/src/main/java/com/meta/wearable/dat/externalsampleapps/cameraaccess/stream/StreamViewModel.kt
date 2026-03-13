@@ -26,7 +26,10 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Rect
 import android.net.Uri
 import android.util.Log
 import android.util.Base64
@@ -129,6 +132,8 @@ class StreamViewModel(
     private const val COMMAND_CENTER_SUCCESS = "Sent to command centre"
     private const val COMMAND_CENTER_DISABLED =
         "Set COMMAND_CENTER_URL to forward responses to command centre"
+    private const val PEOPLE_DETECT_INTERVAL_MS = 650L
+    private const val PEOPLE_DETECT_MAX_DIM_PX = 320
     private const val QA_EVENT_TYPE = "qa"
     private const val LOST_FOUND_EVENT_TYPE = "lost_found"
     private const val MAX_CHAT_MESSAGES = 24
@@ -206,6 +211,13 @@ class StreamViewModel(
   private var previewBitmapB: Bitmap? = null
   private var previewBitmapWriteIsA = true
   private var previewArgbBuffer: ByteBuffer? = null
+  private var peopleCounter: PeopleCounter? = null
+  private var peopleDetectJob: Job? = null
+  private var lastPeopleDetectAtMs: Long = 0L
+  private var peopleDetectBitmap: Bitmap? = null
+  private var peopleDetectCanvas: Canvas? = null
+  private val peopleDetectPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+  private val peopleDetectDstRect = Rect()
 
   init {
     // Collect timer state
@@ -269,6 +281,8 @@ class StreamViewModel(
     videoJob = null
     stateJob?.cancel()
     stateJob = null
+    peopleDetectJob?.cancel()
+    peopleDetectJob = null
     stopPatrolMode()
     stopLivePovSharing()
     stopVoiceDescribe(disableHandsFreeMode = true)
@@ -280,7 +294,15 @@ class StreamViewModel(
     previewBitmapA = null
     previewBitmapB?.recycle()
     previewBitmapB = null
+    peopleDetectBitmap?.recycle()
+    peopleDetectBitmap = null
+    peopleDetectCanvas = null
     _uiState.update { INITIAL_STATE }
+  }
+
+  fun togglePeopleCounting() {
+    val next = !_uiState.value.isPeopleCountingEnabled
+    _uiState.update { it.copy(isPeopleCountingEnabled = next, peopleCount = if (next) it.peopleCount else null) }
   }
 
   fun capturePhoto() {
@@ -1928,6 +1950,37 @@ class StreamViewModel(
     if (livePovEnabled && nowMs - lastLivePovFrameAtMs >= LIVE_POV_MIN_FRAME_INTERVAL_MS) {
       lastLivePovFrameAtMs = nowMs
       livePovClient?.sendFrame(bitmap)
+    }
+
+    val peopleCountingEnabled = _uiState.value.isPeopleCountingEnabled
+    if (peopleCountingEnabled &&
+        nowMs - lastPeopleDetectAtMs >= PEOPLE_DETECT_INTERVAL_MS &&
+        (peopleDetectJob?.isActive != true)
+    ) {
+      lastPeopleDetectAtMs = nowMs
+      peopleDetectJob =
+          viewModelScope.launch(Dispatchers.Default) {
+            val maxDim = maxOf(bitmap.width, bitmap.height).coerceAtLeast(1)
+            val scale = minOf(1f, PEOPLE_DETECT_MAX_DIM_PX.toFloat() / maxDim.toFloat())
+            val targetWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
+            val targetHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
+
+            val detectBitmap =
+                peopleDetectBitmap?.takeIf { it.width == targetWidth && it.height == targetHeight }
+                    ?: Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888).also {
+                      peopleDetectBitmap?.recycle()
+                      peopleDetectBitmap = it
+                      peopleDetectCanvas = Canvas(it)
+                    }
+
+            val canvas = peopleDetectCanvas ?: Canvas(detectBitmap).also { peopleDetectCanvas = it }
+            peopleDetectDstRect.set(0, 0, targetWidth, targetHeight)
+            canvas.drawBitmap(bitmap, null, peopleDetectDstRect, peopleDetectPaint)
+
+            val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
+            val count = runCatching { counter.countPeopleInFront(detectBitmap) }.getOrDefault(0)
+            _uiState.update { it.copy(peopleCount = count) }
+          }
     }
   }
 

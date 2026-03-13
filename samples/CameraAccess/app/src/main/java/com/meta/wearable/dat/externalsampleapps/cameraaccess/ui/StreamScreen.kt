@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.BorderStroke
@@ -173,6 +174,8 @@ fun StreamScreen(
         isHandsFreeModeEnabled = streamUiState.isHandsFreeModeEnabled,
         isPatrolModeEnabled = streamUiState.isPatrolModeEnabled,
         isLivePovSharingEnabled = streamUiState.isLivePovSharingEnabled,
+        isPeopleCountingEnabled = streamUiState.isPeopleCountingEnabled,
+        peopleCount = streamUiState.peopleCount,
         describeResult = streamUiState.describeResult,
         describeError = streamUiState.describeError,
         commandCenterStatus = streamUiState.commandCenterStatus,
@@ -238,6 +241,14 @@ fun StreamScreen(
               label = if (isChatExpanded) stringResource(R.string.chat_hide_button) else stringResource(R.string.chat_show_button),
               onClick = { isChatExpanded = !isChatExpanded },
               tint = Color(0xFFFFD97C),
+              modifier = Modifier.weight(1f),
+          )
+
+          MiniActionButton(
+              icon = Icons.Filled.People,
+              label = if (streamUiState.isPeopleCountingEnabled) "Counting" else "Count",
+              onClick = { streamViewModel.togglePeopleCounting() },
+              tint = Color(0xFFB9F6CA),
               modifier = Modifier.weight(1f),
           )
 
@@ -452,6 +463,8 @@ private fun StatusOverlay(
     isHandsFreeModeEnabled: Boolean,
     isPatrolModeEnabled: Boolean,
     isLivePovSharingEnabled: Boolean,
+    isPeopleCountingEnabled: Boolean,
+    peopleCount: Int?,
     describeResult: String?,
     describeError: String?,
     commandCenterStatus: String?,
@@ -465,6 +478,7 @@ private fun StatusOverlay(
           !isHandsFreeModeEnabled &&
           !isPatrolModeEnabled &&
           !isLivePovSharingEnabled &&
+          !isPeopleCountingEnabled &&
           describeResult.isNullOrEmpty() &&
           describeError.isNullOrEmpty() &&
           commandCenterStatus.isNullOrEmpty() &&
@@ -518,6 +532,12 @@ private fun StatusOverlay(
           StatusChip(
               label = "Live POV sharing",
               tint = Color(0xFF9ED3FF),
+          )
+        }
+        if (isPeopleCountingEnabled) {
+          StatusChip(
+              label = "People: ${peopleCount ?: "…"}",
+              tint = Color(0xFFB9F6CA),
           )
         }
       }

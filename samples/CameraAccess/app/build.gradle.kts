@@ -13,6 +13,8 @@ plugins {
 }
 
 import java.util.Properties
+import java.io.File
+import java.net.URL
 
 android {
   namespace = "com.meta.wearable.dat.externalsampleapps.cameraaccess"
@@ -112,7 +114,39 @@ dependencies {
   implementation(libs.mwdat.mockdevice)
   implementation(libs.squareup.okhttp)
   implementation(libs.stream.webrtc.android)
+  implementation(libs.tflite)
+  implementation(libs.tflite.task.vision)
   androidTestImplementation(libs.androidx.ui.test.junit4)
   androidTestImplementation(libs.androidx.test.uiautomator)
   androidTestImplementation(libs.androidx.test.rules)
 }
+
+val tfliteModelUrl =
+    "https://tfhub.dev/tensorflow/lite-model/efficientdet/lite0/detection/metadata/1?lite-format=tflite"
+val tfliteModelAsset = file("src/main/assets/efficientdet-lite0.tflite")
+val downloadTfliteModel =
+    tasks.register("downloadTfliteModel") {
+      outputs.file(tfliteModelAsset)
+      doLast {
+        if (tfliteModelAsset.exists() && tfliteModelAsset.length() > 1024 * 1024) return@doLast
+        tfliteModelAsset.parentFile.mkdirs()
+        val tmp = File(tfliteModelAsset.parentFile, tfliteModelAsset.name + ".download")
+        URL(tfliteModelUrl).openStream().use { input ->
+          tmp.outputStream().use { out ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+              val read = input.read(buffer)
+              if (read <= 0) break
+              out.write(buffer, 0, read)
+            }
+          }
+        }
+        if (tmp.length() < 1024 * 1024) {
+          tmp.delete()
+          error("Downloaded model file looks too small; download failed.")
+        }
+        tmp.renameTo(tfliteModelAsset)
+      }
+    }
+
+tasks.named("preBuild").configure { dependsOn(downloadTfliteModel) }
