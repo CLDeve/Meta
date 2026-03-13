@@ -36,10 +36,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -68,8 +71,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.BorderStroke
@@ -187,77 +195,29 @@ fun StreamScreen(
     )
 
     ChatOverlay(
+        streamUiState = streamUiState,
         isDescribeLoading = isDescribeLoading,
         chatMessages = chatMessages,
         isExpanded = isChatExpanded,
         onToggleExpanded = { isChatExpanded = !isChatExpanded },
         onSendQuestion = { streamViewModel.describeCurrentFrame(it) },
+        onStartVoiceDescribe = { streamViewModel.startVoiceDescribe(context) },
+        onCapturePhoto = { streamViewModel.capturePhoto() },
+        onTogglePeopleCounting = { streamViewModel.togglePeopleCounting() },
+        onToggleLivePov = { streamViewModel.toggleLivePovSharing() },
+        onTogglePatrol = { streamViewModel.togglePatrolMode() },
+        onStopStream = {
+          streamViewModel.stopStream()
+          wearablesViewModel.navigateToDeviceSelection()
+        },
         modifier =
-            Modifier.align(Alignment.BottomStart)
-                .widthIn(max = 420.dp)
-                .padding(start = 14.dp, end = 14.dp, bottom = 106.dp)
-                .imePadding(),
+            Modifier.align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .fillMaxWidth()
+                .widthIn(max = 560.dp),
     )
-
-    Box(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
-      Surface(
-          modifier =
-              Modifier.align(Alignment.BottomCenter)
-                  .navigationBarsPadding()
-                  .fillMaxWidth(),
-          color = Color(0xFF071424).copy(alpha = 0.82f),
-          shape = RoundedCornerShape(28.dp),
-          border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
-      ) {
-        Row(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          MiniActionButton(
-              icon = Icons.Filled.StopCircle,
-              label = stringResource(R.string.stop_stream_button_short_title),
-              onClick = {
-                streamViewModel.stopStream()
-                wearablesViewModel.navigateToDeviceSelection()
-              },
-              tint = Color(0xFFFFC1C7),
-              modifier = Modifier.weight(1f),
-          )
-
-          MiniActionButton(
-              icon = Icons.Filled.GraphicEq,
-              label = stringResource(R.string.describe_button_short_title),
-              onClick = { streamViewModel.startVoiceDescribe(context) },
-              enabled = !isDescribeLoading,
-              tint = Color(0xFF9ED3FF),
-              modifier = Modifier.weight(1f),
-          )
-
-          MiniActionButton(
-              icon = Icons.AutoMirrored.Filled.Chat,
-              label = if (isChatExpanded) stringResource(R.string.chat_hide_button) else stringResource(R.string.chat_show_button),
-              onClick = { isChatExpanded = !isChatExpanded },
-              tint = Color(0xFFFFD97C),
-              modifier = Modifier.weight(1f),
-          )
-
-          MiniActionButton(
-              icon = Icons.Filled.People,
-              label = if (streamUiState.isPeopleCountingEnabled) "Counting" else "Count",
-              onClick = { streamViewModel.togglePeopleCounting() },
-              tint = Color(0xFFB9F6CA),
-              modifier = Modifier.weight(1f),
-          )
-
-          CaptureButton(
-              onClick = { streamViewModel.capturePhoto() },
-          )
-        }
-      }
-    }
 
     // Countdown timer display
     streamUiState.remainingTimeSeconds?.let { seconds ->
@@ -289,137 +249,215 @@ fun StreamScreen(
 
 @Composable
 private fun ChatOverlay(
+    streamUiState: StreamUiState,
     isDescribeLoading: Boolean,
     chatMessages: List<ChatMessage>,
     isExpanded: Boolean,
     onToggleExpanded: () -> Unit,
     onSendQuestion: (String) -> Unit,
+    onStartVoiceDescribe: () -> Unit,
+    onCapturePhoto: () -> Unit,
+    onTogglePeopleCounting: () -> Unit,
+    onToggleLivePov: () -> Unit,
+    onTogglePatrol: () -> Unit,
+    onStopStream: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   var draft by rememberSaveable { mutableStateOf("") }
+  var isMenuOpen by rememberSaveable { mutableStateOf(false) }
   val canSend = draft.isNotBlank() && !isDescribeLoading
+  val listState = rememberLazyListState()
 
   fun submitDraft() {
     val normalized = draft.trim()
-    if (normalized.isEmpty() || isDescribeLoading) {
-      return
-    }
+    if (normalized.isEmpty() || isDescribeLoading) return
     onSendQuestion(normalized)
     draft = ""
   }
 
-  if (!isExpanded) {
-    Surface(
-        modifier = modifier,
-        color = Color(0xFF071424).copy(alpha = 0.68f),
-        shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-    ) {
-      Row(
-          modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(10.dp),
-      ) {
-        Surface(
-            color = Color(0xFFFFD97C).copy(alpha = 0.14f),
-            shape = RoundedCornerShape(999.dp),
-            border = BorderStroke(1.dp, Color(0xFFFFD97C).copy(alpha = 0.26f)),
-        ) {
-          Text(
-              text = "Chat",
-              modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-              color = Color(0xFFFFD97C),
-              style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
-          )
-        }
-        Text(
-            text = chatMessages.lastOrNull()?.text ?: stringResource(id = R.string.chat_collapsed_hint),
-            color = Color(0xFFD7E7FF),
-            style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(onClick = onToggleExpanded) {
-          Text(text = stringResource(id = R.string.chat_show_button), style = AppTypography.Button)
-        }
-      }
+  LaunchedEffect(chatMessages.size, isExpanded) {
+    if (isExpanded && chatMessages.isNotEmpty()) {
+      listState.scrollToItem(index = maxOf(0, chatMessages.size - 1))
     }
-    return
   }
 
   Surface(
       modifier = modifier,
-      color = Color(0xFF06111E).copy(alpha = 0.92f),
-      shape = RoundedCornerShape(22.dp),
-      border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+      color = Color(0xFF0A0B0E).copy(alpha = 0.88f),
+      shape = RoundedCornerShape(26.dp),
+      border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+      shadowElevation = 18.dp,
   ) {
-    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Surface(
-            color = Color.White.copy(alpha = 0.08f),
-            shape = RoundedCornerShape(999.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+    Column(modifier = Modifier.fillMaxWidth()) {
+      if (isExpanded) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+          Surface(
+              color = Color.White.copy(alpha = 0.08f),
+              shape = RoundedCornerShape(999.dp),
+              border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+          ) {
+            Text(
+                text = "Chat",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                color = Color.White,
+                style = AppTypography.Body.copy(fontWeight = FontWeight.SemiBold),
+            )
+          }
           Text(
-              text = "Assistant",
-              modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-              color = Color.White,
-              style = AppTypography.Body.copy(fontWeight = FontWeight.SemiBold),
-          )
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        if (isDescribeLoading) {
-          Text(
-              text = stringResource(id = R.string.describe_loading),
-              color = Color(0xFFB9F6CA),
+              text = chatMessages.lastOrNull()?.text ?: "No messages yet",
+              modifier = Modifier.weight(1f),
+              maxLines = 1,
+              color = Color.White.copy(alpha = 0.75f),
               style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
           )
+          TextButton(onClick = onToggleExpanded) {
+            Text(text = stringResource(id = R.string.chat_hide_button), style = AppTypography.Button)
+          }
         }
-        Spacer(modifier = Modifier.width(6.dp))
-        TextButton(onClick = onToggleExpanded) {
-          Text(
-              text = if (isExpanded) stringResource(id = R.string.chat_hide_button) else stringResource(id = R.string.chat_show_button),
-              style = AppTypography.Button,
-          )
-        }
-      }
 
-      if (chatMessages.isNotEmpty()) {
-        val recentMessages = chatMessages.takeLast(3)
+        HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
+
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 108.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            state = listState,
         ) {
-          items(recentMessages) { message -> ChatBubble(message = message) }
+          items(chatMessages.takeLast(18)) { message ->
+            val isUser = message.role == ChatRole.USER
+            val bubbleColor = if (isUser) Color(0xFF1B2A42) else Color.White.copy(alpha = 0.07f)
+            val bubbleBorder = Color.White.copy(alpha = 0.10f)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
+              Surface(
+                  color = bubbleColor,
+                  shape = RoundedCornerShape(18.dp),
+                  border = BorderStroke(1.dp, bubbleBorder),
+              ) {
+                Text(
+                    text = message.text,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    color = Color.White,
+                    style = AppTypography.Body.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize),
+                )
+              }
+            }
+          }
         }
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
       }
 
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = draft,
-            onValueChange = { draft = it },
-            modifier = Modifier.weight(1f),
-            placeholder = {
-              Text(
-                  text = stringResource(id = R.string.chat_input_placeholder),
-                  style = AppTypography.Body.copy(color = Color(0xFF8EA5C7)),
-              )
-            },
-            singleLine = true,
-            enabled = !isDescribeLoading,
-            textStyle = AppTypography.Body.copy(color = Color.White),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { submitDraft() }),
-        )
+      Box(modifier = Modifier.fillMaxWidth()) {
+        if (isMenuOpen) {
+          Surface(
+              modifier =
+                  Modifier.align(Alignment.TopStart)
+                      .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 72.dp)
+                      .fillMaxWidth()
+                      .widthIn(max = 520.dp),
+              color = Color(0xFF14161A).copy(alpha = 0.92f),
+              shape = RoundedCornerShape(22.dp),
+              border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+              shadowElevation = 22.dp,
+          ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+              ActionMenuItem(icon = Icons.Filled.PhotoCamera, label = "Camera") {
+                isMenuOpen = false
+                onCapturePhoto()
+              }
+              ActionMenuItem(
+                  icon = Icons.Filled.People,
+                  label = if (streamUiState.isPeopleCountingEnabled) "People counting: ON" else "People counting: OFF",
+              ) {
+                onTogglePeopleCounting()
+              }
+              ActionMenuItem(
+                  icon = Icons.Filled.Public,
+                  label = if (streamUiState.isLivePovSharingEnabled) "Live POV: Stop sharing" else "Live POV: Start sharing",
+              ) {
+                onToggleLivePov()
+              }
+              ActionMenuItem(
+                  icon = Icons.Filled.Security,
+                  label = if (streamUiState.isPatrolModeEnabled) "Patrol mode: Stop" else "Patrol mode: Start",
+              ) {
+                onTogglePatrol()
+              }
+              HorizontalDivider(color = Color.White.copy(alpha = 0.10f), modifier = Modifier.padding(vertical = 6.dp))
+              ActionMenuItem(icon = Icons.Filled.StopCircle, label = "Stop stream") {
+                isMenuOpen = false
+                onStopStream()
+              }
+            }
+          }
+        }
 
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Button(
-            onClick = { submitDraft() },
-            enabled = canSend,
-            modifier = Modifier.widthIn(min = 76.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-          Text(text = stringResource(id = R.string.chat_send_button), style = AppTypography.Button)
+          IconButton(
+              onClick = { isMenuOpen = !isMenuOpen },
+              enabled = !isDescribeLoading,
+          ) {
+            Icon(imageVector = Icons.Filled.Add, contentDescription = "Menu", tint = Color.White)
+          }
+
+          OutlinedTextField(
+              value = draft,
+              onValueChange = { draft = it },
+              modifier = Modifier.weight(1f),
+              placeholder = {
+                Text(
+                    text = "Message",
+                    color = Color.White.copy(alpha = 0.45f),
+                    style = AppTypography.Body,
+                )
+              },
+              enabled = !isDescribeLoading,
+              keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+              keyboardActions = KeyboardActions(onSend = { submitDraft() }),
+              singleLine = true,
+              textStyle = AppTypography.Body.copy(color = Color.White),
+          )
+
+          IconButton(
+              onClick = {
+                isMenuOpen = false
+                onStartVoiceDescribe()
+              },
+              enabled = !isDescribeLoading,
+          ) {
+            Icon(imageVector = Icons.Filled.GraphicEq, contentDescription = "Voice", tint = Color(0xFF9ED3FF))
+          }
+
+          IconButton(
+              onClick = {
+                isMenuOpen = false
+                if (!isExpanded) onToggleExpanded()
+                submitDraft()
+              },
+              enabled = canSend,
+          ) {
+            Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.White)
+          }
+
+          IconButton(
+              onClick = {
+                isMenuOpen = false
+                onToggleExpanded()
+              },
+          ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Chat,
+                contentDescription = "Chat",
+                tint = Color(0xFFFFD97C),
+            )
+          }
         }
       }
     }
@@ -427,30 +465,31 @@ private fun ChatOverlay(
 }
 
 @Composable
-private fun ChatBubble(message: ChatMessage) {
-  val isUser = message.role == ChatRole.USER
-  val bubbleColor =
-      if (isUser) {
-        Color(0xFF2C77E6).copy(alpha = 0.9f)
-      } else {
-        Color(0xFF10233E).copy(alpha = 0.9f)
-      }
-
-  Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+private fun ActionMenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+  TextButton(
+      onClick = onClick,
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
   ) {
-    Surface(
-        color = bubbleColor,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+      Surface(
+          color = Color.White.copy(alpha = 0.08f),
+          shape = RoundedCornerShape(14.dp),
+          border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+      ) {
+        Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+          Icon(imageVector = icon, contentDescription = null, tint = Color.White)
+        }
+      }
       Text(
-          text = message.text,
-          modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+          text = label,
           color = Color.White,
-          style = AppTypography.Body.copy(color = Color.White, fontSize = MaterialTheme.typography.bodyMedium.fontSize),
-          maxLines = 3,
+          style = AppTypography.Body.copy(fontWeight = FontWeight.Medium),
+          modifier = Modifier.weight(1f),
+          textAlign = TextAlign.Start,
       )
     }
   }

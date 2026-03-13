@@ -305,6 +305,22 @@ class StreamViewModel(
     _uiState.update { it.copy(isPeopleCountingEnabled = next, peopleCount = if (next) it.peopleCount else null) }
   }
 
+  fun toggleLivePovSharing() {
+    if (_uiState.value.isLivePovSharingEnabled) {
+      stopLivePovSharing(question = null)
+    } else {
+      startLivePovSharing(question = "start live pov")
+    }
+  }
+
+  fun togglePatrolMode() {
+    if (_uiState.value.isPatrolModeEnabled) {
+      stopPatrolMode(question = null)
+    } else {
+      startPatrolMode(question = "start patrol")
+    }
+  }
+
   fun capturePhoto() {
     if (uiState.value.streamSessionState == StreamSessionState.STREAMING) {
       viewModelScope.launch { streamSession?.capturePhoto()?.onSuccess { handlePhotoData(it) } }
