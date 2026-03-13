@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>People Count</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0b0c;
+      --panel: rgba(255, 255, 255, 0.08);
+      --border: rgba(243, 244, 246, 0.16);
+      --text: #f3f4f6;
+      --muted: rgba(243, 244, 246, 0.68);
+      --accent: #f3f4f6;
+      --live: #f3f4f6;
+      --ok: #1fbf76;
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.10), transparent 25%),
+        radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.06), transparent 20%),
+        var(--bg);
+    }
+    .shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .title {
+      margin: 0;
+      font-size: 30px;
+    }
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 10px var(--live);
+    }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+    .dot.warn { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type="range"] { width: 150px; }
+    input[type="checkbox"] { transform: scale(1.05); }
+    .viewer {
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      overflow: hidden;
+      background: rgba(5, 16, 30, 0.92);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+    .frameWrap { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #071424; }
+    .frame {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #071424;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .hud {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      pointer-events: none;
+    }
+    .badge {
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.34);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+      font-size: 13px;
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .badge strong { font-size: 15px; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 14px 16px 18px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px;
+    }
+    .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .value {
+      font-size: 16px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .empty {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+    @media (max-width: 780px) {
+      .meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="topbar">
+      <div>
+        <h1 class="title">People Count</h1>
+        <p class="subtitle">Counts “person” in the Live POV stream (browser-side). Best effort, not safety-certified.</p>
+      </div>
+      <div class="controls">
+        <span class="pill"><span id="modelDot" class="dot warn"></span><span id="modelState">model: loading</span></span>
+        <span class="pill"><span id="liveDot" class="dot"></span><span id="liveState">stream: waiting</span></span>
+        <label class="pill" style="pointer-events:auto;">
+          <input id="detectToggle" type="checkbox" checked />
+          Detect
+        </label>
+        <label class="pill" style="pointer-events:auto;">
+          Cadence
+          <input id="cadence" type="range" min="350" max="2500" step="50" value="900" />
+          <span id="cadenceLabel" style="color:var(--text);font-size:12px;">900ms</span>
+        </label>
+        <a class="pill" href="/live-pov">Live POV</a>
+        <a class="pill" href="/">Back</a>
+      </div>
+    </section>
+
+    <section id="viewer" class="viewer" style="display:none;">
+      <div class="frameWrap">
+        <img id="frame" class="frame" alt="Live POV frame" />
+        <canvas id="overlay" class="overlay"></canvas>
+        <div class="hud">
+          <div class="badge"><span>People</span><strong id="peopleCount">-</strong></div>
+          <div class="badge"><span>FPS</span><strong id="detectFps">-</strong></div>
+        </div>
+      </div>
+      <div class="meta">
+        <div class="card">
+          <div class="label">Updated</div>
+          <div id="updatedAt" class="value">-</div>
+        </div>
+        <div class="card">
+          <div class="label">Source</div>
+          <div id="source" class="value">-</div>
+        </div>
+        <div class="card">
+          <div class="label">Status</div>
+          <div id="statusText" class="value">Waiting for frames…</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="empty" class="empty">No live POV stream yet. Say “share live POV” in the app to begin.</section>
+  </div>
+
+  <!-- TensorFlow.js + COCO-SSD (UMD globals: tf + cocoSsd). -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+  <script>
+    const modelDot = document.getElementById("modelDot");
+    const modelState = document.getElementById("modelState");
+    const liveDot = document.getElementById("liveDot");
+    const liveState = document.getElementById("liveState");
+
+    const viewer = document.getElementById("viewer");
+    const empty = document.getElementById("empty");
+    const frameEl = document.getElementById("frame");
+    const overlay = document.getElementById("overlay");
+    const ctx = overlay.getContext("2d");
+
+    const updatedAt = document.getElementById("updatedAt");
+    const sourceEl = document.getElementById("source");
+    const statusText = document.getElementById("statusText");
+    const peopleCountEl = document.getElementById("peopleCount");
+    const detectFpsEl = document.getElementById("detectFps");
+
+    const detectToggle = document.getElementById("detectToggle");
+    const cadenceInput = document.getElementById("cadence");
+    const cadenceLabel = document.getElementById("cadenceLabel");
+
+    function formatTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    function setModelState(state, kind) {
+      modelState.textContent = `model: ${state}`;
+      modelDot.className = "dot " + (kind || "");
+    }
+
+    function setLiveState(state, kind) {
+      liveState.textContent = `stream: ${state}`;
+      liveDot.className = "dot " + (kind || "");
+    }
+
+    let model = null;
+    let lastFrameKey = "";
+    let lastDetectAt = 0;
+    let detectInFlight = false;
+    let lastDetectFrameT0 = 0;
+
+    async function loadModel() {
+      try {
+        setModelState("loading", "warn");
+        if (!window.tf || !window.cocoSsd) {
+          throw new Error("TensorFlow.js scripts failed to load");
+        }
+        // Force eager init so first detect is less janky.
+        await tf.ready();
+        model = await cocoSsd.load({ base: "lite_mobilenet_v2" });
+        setModelState("ready", "ok");
+      } catch (e) {
+        setModelState("error", "warn");
+        statusText.textContent = `Model load failed: ${e.message}`;
+      }
+    }
+
+    function resizeOverlayToFrame() {
+      const w = frameEl.naturalWidth || 0;
+      const h = frameEl.naturalHeight || 0;
+      if (!w || !h) return false;
+      if (overlay.width !== w) overlay.width = w;
+      if (overlay.height !== h) overlay.height = h;
+      return true;
+    }
+
+    function clearOverlay() {
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+    }
+
+    function drawDetections(predictions) {
+      clearOverlay();
+      if (!predictions || !predictions.length) return;
+
+      ctx.lineWidth = 3;
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.textBaseline = "top";
+
+      for (const pred of predictions) {
+        if (pred.class !== "person") continue;
+        const [x, y, w, h] = pred.bbox;
+        const score = Math.round((pred.score || 0) * 100);
+
+        ctx.strokeStyle = "rgba(251, 191, 36, 0.95)";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+        ctx.strokeRect(x, y, w, h);
+        const label = `person ${score}%`;
+        const pad = 6;
+        const textW = ctx.measureText(label).width;
+        ctx.fillRect(x, Math.max(0, y - 24), textW + pad * 2, 22);
+        ctx.fillStyle = "rgba(251, 191, 36, 0.98)";
+        ctx.fillText(label, x + pad, Math.max(0, y - 22));
+      }
+    }
+
+    async function detectPeopleIfReady() {
+      if (!detectToggle.checked) return;
+      if (!model) return;
+      if (detectInFlight) return;
+
+      const cadenceMs = Number(cadenceInput.value || 900);
+      const now = Date.now();
+      if (now - lastDetectAt < cadenceMs) return;
+      if (!frameEl.complete || !frameEl.naturalWidth) return;
+
+      detectInFlight = true;
+      lastDetectAt = now;
+      lastDetectFrameT0 = performance.now();
+      try {
+        resizeOverlayToFrame();
+        const predictions = await model.detect(frameEl);
+        const people = predictions.filter(p => p.class === "person" && (p.score || 0) >= 0.35);
+        peopleCountEl.textContent = String(people.length);
+        drawDetections(predictions);
+      } catch (e) {
+        statusText.textContent = `Detect error: ${e.message}`;
+      } finally {
+        const dt = performance.now() - lastDetectFrameT0;
+        const fps = dt > 0 ? (1000 / dt) : 0;
+        detectFpsEl.textContent = fps ? fps.toFixed(1) : "-";
+        detectInFlight = false;
+      }
+    }
+
+    async function refreshLivePov() {
+      try {
+        const resp = await fetch("/api/live-pov", { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const payload = await resp.json();
+        const item = payload.item;
+        if (!item || !item.frameJpegBase64) {
+          viewer.style.display = "none";
+          empty.style.display = "block";
+          setLiveState("waiting", "");
+          return;
+        }
+
+        const key = `${item.receivedAtIso || ""}|${item.frameSha256 || ""}|${(item.frameJpegBase64 || "").length}`;
+        if (key !== lastFrameKey) {
+          lastFrameKey = key;
+          frameEl.src = `data:${item.imageMimeType || "image/jpeg"};base64,${item.frameJpegBase64}`;
+        }
+
+        updatedAt.textContent = formatTime(item.receivedAtIso);
+        sourceEl.textContent = item.source || "meta-wearables-cameraaccess";
+        statusText.textContent = item.answer || "Live POV frame update";
+        viewer.style.display = "block";
+        empty.style.display = "none";
+        setLiveState("live", "ok");
+      } catch (error) {
+        setLiveState("error", "warn");
+        empty.style.display = "block";
+        empty.textContent = `Failed to load live POV: ${error.message}`;
+      }
+    }
+
+    cadenceInput.addEventListener("input", () => {
+      cadenceLabel.textContent = `${cadenceInput.value}ms`;
+    });
+    cadenceLabel.textContent = `${cadenceInput.value}ms`;
+
+    frameEl.addEventListener("load", () => {
+      resizeOverlayToFrame();
+      // Trigger a detect soon after new frame is loaded.
+      requestAnimationFrame(() => detectPeopleIfReady());
+    });
+
+    loadModel();
+    refreshLivePov();
+    setInterval(refreshLivePov, 800);
+    setInterval(detectPeopleIfReady, 120);
+  </script>
+</body>
+</html>
+

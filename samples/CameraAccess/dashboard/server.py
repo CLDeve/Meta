@@ -1173,6 +1173,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_text(html, "text/html; charset=utf-8")
             return
 
+        if parsed.path in {"/people-count", "/people-count.html"}:
+            people_count_path = Path(__file__).with_name("people-count.html")
+            if not people_count_path.exists():
+                self._send_json({"error": "Missing people-count.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            html = people_count_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
         if parsed.path in {"/airspace", "/airspace.html"}:
             airspace_path = Path(__file__).with_name("airspace.html")
             if not airspace_path.exists():
