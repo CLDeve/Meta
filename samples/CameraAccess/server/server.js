@@ -14,7 +14,21 @@ let nextClientId = 1;
 
 function getRoom(roomName) {
   if (!rooms.has(roomName)) {
-    rooms.set(roomName, { broadcaster: null, viewer: null });
+    rooms.set(roomName, {
+      broadcaster: null,
+      viewer: null,
+      stats: {
+        createdAt: Date.now(),
+        lastBroadcasterJoinAt: 0,
+        lastViewerJoinAt: 0,
+        lastOfferAt: 0,
+        lastAnswerAt: 0,
+        lastIceAt: 0,
+        offerCount: 0,
+        answerCount: 0,
+        iceCount: 0,
+      },
+    });
   }
   return rooms.get(roomName);
 }
@@ -64,6 +78,7 @@ function handleJoin(ws, message) {
     room.broadcaster = ws;
     ws.roomName = roomName;
     ws.role = role;
+    room.stats.lastBroadcasterJoinAt = Date.now();
     if (room.viewer) {
       sendJson(ws, { type: "viewer-ready" });
     }
@@ -80,6 +95,7 @@ function handleJoin(ws, message) {
   room.viewer = ws;
   ws.roomName = roomName;
   ws.role = role;
+  room.stats.lastViewerJoinAt = Date.now();
   sendJson(room.broadcaster, { type: "viewer-ready" });
 }
 
@@ -88,6 +104,16 @@ function relay(ws, message) {
   if (!room) {
     sendJson(ws, { type: "error", message: "Join a room first" });
     return;
+  }
+  if (message.type === "offer") {
+    room.stats.lastOfferAt = Date.now();
+    room.stats.offerCount += 1;
+  } else if (message.type === "answer") {
+    room.stats.lastAnswerAt = Date.now();
+    room.stats.answerCount += 1;
+  } else if (message.type === "ice") {
+    room.stats.lastIceAt = Date.now();
+    room.stats.iceCount += 1;
   }
   const target = ws.role === "broadcaster" ? room.viewer : room.broadcaster;
   if (!target) return;
@@ -112,7 +138,7 @@ const server = http.createServer((req, res) => {
   }
   if (reqUrl.pathname === "/api/status") {
     const roomName = String(reqUrl.searchParams.get("room") || "cameraaccess").trim();
-    const room = rooms.get(roomName) || { broadcaster: null, viewer: null };
+    const room = rooms.get(roomName) || { broadcaster: null, viewer: null, stats: null };
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(
       JSON.stringify({
@@ -120,6 +146,7 @@ const server = http.createServer((req, res) => {
         room: roomName,
         hasBroadcaster: Boolean(room.broadcaster),
         hasViewer: Boolean(room.viewer),
+        stats: room.stats || null,
       }),
     );
     return;
