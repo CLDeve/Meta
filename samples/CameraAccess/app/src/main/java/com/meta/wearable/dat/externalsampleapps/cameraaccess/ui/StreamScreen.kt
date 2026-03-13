@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -44,19 +45,24 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
@@ -267,6 +273,7 @@ private fun ChatOverlay(
   var isMenuOpen by rememberSaveable { mutableStateOf(false) }
   val canSend = draft.isNotBlank() && !isDescribeLoading
   val listState = rememberLazyListState()
+  val composerFocusRequester = remember { FocusRequester() }
 
   fun submitDraft() {
     val normalized = draft.trim()
@@ -407,10 +414,19 @@ private fun ChatOverlay(
             Icon(imageVector = Icons.Filled.Add, contentDescription = "Menu", tint = Color.White)
           }
 
-          OutlinedTextField(
+          TextField(
               value = draft,
               onValueChange = { draft = it },
-              modifier = Modifier.weight(1f),
+              modifier =
+                  Modifier.weight(1f)
+                      .heightIn(min = 54.dp, max = 132.dp)
+                      .wrapContentHeight(Alignment.CenterVertically)
+                      .focusRequester(composerFocusRequester)
+                      .onFocusChanged { state ->
+                        if (state.isFocused && !isExpanded) {
+                          onToggleExpanded()
+                        }
+                      },
               placeholder = {
                 Text(
                     text = "Message",
@@ -421,8 +437,21 @@ private fun ChatOverlay(
               enabled = !isDescribeLoading,
               keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
               keyboardActions = KeyboardActions(onSend = { submitDraft() }),
-              singleLine = true,
+              singleLine = false,
+              minLines = 1,
+              maxLines = 4,
               textStyle = AppTypography.Body.copy(color = Color.White),
+              shape = RoundedCornerShape(18.dp),
+              colors =
+                  TextFieldDefaults.colors(
+                      focusedContainerColor = Color.White.copy(alpha = 0.06f),
+                      unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
+                      disabledContainerColor = Color.White.copy(alpha = 0.03f),
+                      focusedIndicatorColor = Color.Transparent,
+                      unfocusedIndicatorColor = Color.Transparent,
+                      disabledIndicatorColor = Color.Transparent,
+                      cursorColor = Color.White,
+                  ),
           )
 
           IconButton(
