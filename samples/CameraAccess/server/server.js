@@ -126,20 +126,31 @@ function serveFile(res, filePath, contentType) {
   res.end(body);
 }
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 const server = http.createServer((req, res) => {
   const reqUrl = new URL(req.url, `http://${req.headers.host}`);
   if (reqUrl.pathname === "/" || reqUrl.pathname === "/viewer" || reqUrl.pathname === "/viewer.html") {
     return serveFile(res, path.join(__dirname, "viewer.html"), "text/html; charset=utf-8");
   }
+  if (req.method === "OPTIONS" && (reqUrl.pathname === "/healthz" || reqUrl.pathname.startsWith("/api/"))) {
+    res.writeHead(204, { ...CORS_HEADERS, "Cache-Control": "no-store" });
+    res.end();
+    return;
+  }
   if (reqUrl.pathname === "/healthz") {
-    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.writeHead(200, { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({ ok: true }));
     return;
   }
   if (reqUrl.pathname === "/api/status") {
     const roomName = String(reqUrl.searchParams.get("room") || "cameraaccess").trim();
     const room = rooms.get(roomName) || { broadcaster: null, viewer: null, stats: null };
-    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.writeHead(200, { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(
       JSON.stringify({
         ok: true,
@@ -162,7 +173,7 @@ const server = http.createServer((req, res) => {
         credential: TURN_PASSWORD,
       });
     }
-    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.writeHead(200, { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({ iceServers }));
     return;
   }
