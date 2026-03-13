@@ -297,12 +297,59 @@ class StreamViewModel(
     peopleDetectBitmap?.recycle()
     peopleDetectBitmap = null
     peopleDetectCanvas = null
+    _uiState.value.peopleCountSnapshot?.recycle()
     _uiState.update { INITIAL_STATE }
   }
 
   fun togglePeopleCounting() {
     val next = !_uiState.value.isPeopleCountingEnabled
     _uiState.update { it.copy(isPeopleCountingEnabled = next, peopleCount = if (next) it.peopleCount else null) }
+  }
+
+  fun showPeopleCountPage() {
+    _uiState.update { it.copy(isPeopleCountPageVisible = true) }
+  }
+
+  fun hidePeopleCountPage() {
+    _uiState.update { it.copy(isPeopleCountPageVisible = false) }
+  }
+
+  fun capturePeopleCountSnapshot() {
+    val frame = _uiState.value.videoFrame ?: return
+    viewModelScope.launch(Dispatchers.Default) {
+      val maxDim = maxOf(frame.width, frame.height).coerceAtLeast(1)
+      val scale = minOf(1f, 640f / maxDim.toFloat())
+      val targetWidth = (frame.width * scale).toInt().coerceAtLeast(1)
+      val targetHeight = (frame.height * scale).toInt().coerceAtLeast(1)
+
+      val snapshot = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(snapshot)
+      peopleDetectDstRect.set(0, 0, targetWidth, targetHeight)
+      canvas.drawBitmap(frame, null, peopleDetectDstRect, peopleDetectPaint)
+
+      val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
+      val detections = runCatching { counter.detectPeopleInFront(snapshot) }.getOrDefault(emptyList())
+
+      val normalized =
+          detections.map { det ->
+            val box = det.boundingBox
+            NormalizedBox(
+                left = (box.left / targetWidth.toFloat()).coerceIn(0f, 1f),
+                top = (box.top / targetHeight.toFloat()).coerceIn(0f, 1f),
+                right = (box.right / targetWidth.toFloat()).coerceIn(0f, 1f),
+                bottom = (box.bottom / targetHeight.toFloat()).coerceIn(0f, 1f),
+                score = det.score,
+            )
+          }
+
+      _uiState.update {
+        it.copy(
+            peopleCountSnapshot = snapshot,
+            peopleCountSnapshotBoxes = normalized,
+            peopleCountSnapshotCount = normalized.size,
+        )
+      }
+    }
   }
 
   fun toggleLivePovSharing() {

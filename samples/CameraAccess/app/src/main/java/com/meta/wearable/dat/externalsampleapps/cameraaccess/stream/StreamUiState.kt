@@ -25,6 +25,14 @@ data class ChatMessage(
     val text: String,
 )
 
+data class NormalizedBox(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+    val score: Float? = null,
+)
+
 data class StreamUiState(
     val streamSessionState: StreamSessionState = StreamSessionState.STOPPED,
     val videoFrame: Bitmap? = null,
@@ -43,6 +51,10 @@ data class StreamUiState(
     val isLivePovSharingEnabled: Boolean = false,
     val isPeopleCountingEnabled: Boolean = false,
     val peopleCount: Int? = null,
+    val isPeopleCountPageVisible: Boolean = false,
+    val peopleCountSnapshot: Bitmap? = null,
+    val peopleCountSnapshotCount: Int? = null,
+    val peopleCountSnapshotBoxes: List<NormalizedBox> = emptyList(),
     val voiceHeardText: String? = null,
     val chatMessages: List<ChatMessage> = emptyList(),
 )
