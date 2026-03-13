@@ -55,8 +55,11 @@ function handleJoin(ws, message) {
   const room = getRoom(roomName);
   if (role === "broadcaster") {
     if (room.broadcaster && room.broadcaster !== ws) {
-      sendJson(ws, { type: "error", message: "Broadcaster already connected" });
-      return;
+      try {
+        sendJson(room.broadcaster, { type: "error", message: "Broadcaster replaced by a new connection" });
+        room.broadcaster.close(1000, "replaced");
+      } catch (_) {}
+      removeClient(room.broadcaster);
     }
     room.broadcaster = ws;
     ws.roomName = roomName;
@@ -68,8 +71,11 @@ function handleJoin(ws, message) {
   }
 
   if (room.viewer && room.viewer !== ws) {
-    sendJson(ws, { type: "error", message: "Viewer already connected" });
-    return;
+    try {
+      sendJson(room.viewer, { type: "error", message: "Viewer replaced by a new connection" });
+      room.viewer.close(1000, "replaced");
+    } catch (_) {}
+    removeClient(room.viewer);
   }
   room.viewer = ws;
   ws.roomName = roomName;
@@ -120,8 +126,14 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 
+function heartbeat() {
+  this.isAlive = true;
+}
+
 wss.on("connection", (ws) => {
   ws.clientId = `client-${nextClientId++}`;
+  ws.isAlive = true;
+  ws.on("pong", heartbeat);
 
   ws.on("message", (raw) => {
     let message;
@@ -154,6 +166,20 @@ wss.on("connection", (ws) => {
     removeClient(ws);
   });
 });
+
+const interval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      try { ws.terminate(); } catch (_) {}
+      removeClient(ws);
+      return;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (_) {}
+  });
+}, 30_000);
+
+wss.on("close", () => clearInterval(interval));
 
 server.listen(PORT, HOST, () => {
   console.log(`Live POV signaling server listening on http://${HOST}:${PORT}`);
