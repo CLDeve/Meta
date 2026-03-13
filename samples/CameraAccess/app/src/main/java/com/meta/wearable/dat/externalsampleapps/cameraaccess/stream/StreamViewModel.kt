@@ -115,7 +115,9 @@ class StreamViewModel(
     private const val LIVE_POV_MAX_FPS = 6L
     private const val PREVIEW_MIN_FRAME_INTERVAL_MS = 1000L / PREVIEW_MAX_FPS
     private const val LIVE_POV_MIN_FRAME_INTERVAL_MS = 1000L / LIVE_POV_MAX_FPS
-    private const val PREVIEW_MAX_DIM_PX = 960
+    // Direct I420->RGB conversion is CPU-heavy in Kotlin; keep preview small for smooth UI.
+    private const val PREVIEW_MAX_DIM_PX = 480
+    private const val LIVE_POV_MAX_DIM_PX = 960
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
     private const val HANDS_FREE_STOP_MESSAGE = "Hands-free mode stopped."
@@ -201,7 +203,9 @@ class StreamViewModel(
   private var lastPatrolAlertText: String? = null
   private var livePovClient: WebRtcClient? = null
   private var i420FrameBuffer = ByteArray(0)
-  private var previewBitmap: Bitmap? = null
+  private var previewBitmapA: Bitmap? = null
+  private var previewBitmapB: Bitmap? = null
+  private var previewBitmapWriteIsA = true
   private var previewRgb565Buffer: ByteBuffer? = null
 
   init {
@@ -273,6 +277,10 @@ class StreamViewModel(
     streamSession = null
     lastPreviewFrameAtMs = 0L
     streamTimer.stopTimer()
+    previewBitmapA?.recycle()
+    previewBitmapA = null
+    previewBitmapB?.recycle()
+    previewBitmapB = null
     _uiState.update { INITIAL_STATE }
   }
 
@@ -1877,17 +1885,28 @@ class StreamViewModel(
     // Restore position
     buffer.position(originalPosition)
 
+    val maxDimPx = if (livePovEnabled) LIVE_POV_MAX_DIM_PX else PREVIEW_MAX_DIM_PX
     val maxDim = maxOf(videoFrame.width, videoFrame.height).coerceAtLeast(1)
-    val scale = minOf(1f, PREVIEW_MAX_DIM_PX.toFloat() / maxDim.toFloat())
+    val scale = minOf(1f, maxDimPx.toFloat() / maxDim.toFloat())
     val outWidth = (videoFrame.width * scale).toInt().coerceAtLeast(1)
     val outHeight = (videoFrame.height * scale).toInt().coerceAtLeast(1)
 
     val bitmap =
-        previewBitmap?.takeIf { it.width == outWidth && it.height == outHeight }
-            ?: Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.RGB_565).also {
-              previewBitmap?.recycle()
-              previewBitmap = it
-            }
+        if (previewBitmapWriteIsA) {
+          val current = previewBitmapA
+          if (current?.width == outWidth && current.height == outHeight) current
+          else {
+            current?.recycle()
+            Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.RGB_565).also { previewBitmapA = it }
+          }
+        } else {
+          val current = previewBitmapB
+          if (current?.width == outWidth && current.height == outHeight) current
+          else {
+            current?.recycle()
+            Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.RGB_565).also { previewBitmapB = it }
+          }
+        }
 
     val neededBytes = outWidth * outHeight * 2
     val rgbBuffer =
@@ -1907,6 +1926,7 @@ class StreamViewModel(
     rgbBuffer.flip()
     bitmap.copyPixelsFromBuffer(rgbBuffer)
 
+    previewBitmapWriteIsA = !previewBitmapWriteIsA
     _uiState.update { it.copy(videoFrame = bitmap) }
     if (livePovEnabled && nowMs - lastLivePovFrameAtMs >= LIVE_POV_MIN_FRAME_INTERVAL_MS) {
       lastLivePovFrameAtMs = nowMs
