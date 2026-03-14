@@ -556,6 +556,42 @@
       background: rgba(0, 0, 0, 0.18);
     }
 
+    .flight-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 520px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.78);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .flight-table th,
+    .flight-table td {
+      padding: 10px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    .flight-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: rgba(0, 0, 0, 0.52);
+      color: rgba(255, 255, 255, 0.86);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 11px;
+      border-bottom-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .flight-table td.dim { color: rgba(255, 255, 255, 0.58); }
+    .flight-table td.status-ok { color: rgba(77, 255, 151, 0.86); }
+    .flight-table td.status-warn { color: rgba(255, 191, 102, 0.9); }
+    .flight-table td.status-bad { color: rgba(255, 95, 109, 0.9); }
+
     .news {
       list-style: none;
       margin: 0;
@@ -928,7 +964,7 @@
             <span class="badge" id="newsCount">0</span>
           </li>
           <li>
-            <label><input id="layerCams" type="checkbox" checked /> Live Webcams</label>
+            <label><input id="layerCams" type="checkbox" checked /> Flights</label>
             <span class="badge" id="camsCount">0</span>
           </li>
           <li>
@@ -1030,17 +1066,27 @@
         </div>
       </div>
 
-      <div id="paneCams" class="panel pane" aria-label="Live webcams">
+      <div id="paneCams" class="panel pane" aria-label="Flights">
         <div class="header">
-          <span>Live Webcams</span>
+          <span>Flights (Top 20)</span>
           <span class="tabs">
-            <button class="tab active" data-cams="recent" type="button">Recent</button>
-            <button class="tab" data-cams="answers" type="button">Answers</button>
+            <button class="tab active" data-cams="gate_open" type="button">Gate Open</button>
+            <button class="tab" data-cams="all" type="button">All</button>
           </span>
         </div>
         <div class="scroll">
-          <div class="cam-grid" id="camGrid"></div>
-          <div class="empty" id="camEmpty">No frames yet</div>
+          <table class="flight-table" aria-label="Flights table">
+            <thead>
+              <tr>
+                <th>Flight</th>
+                <th>Gate</th>
+                <th>Terminal</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="flightRows"></tbody>
+          </table>
+          <div class="empty" id="camEmpty">No flights yet</div>
         </div>
       </div>
 
@@ -1134,7 +1180,7 @@
     const paneAi = document.getElementById("paneAi");
     const newsList = document.getElementById("newsList");
     const newsEmpty = document.getElementById("newsEmpty");
-    const camGrid = document.getElementById("camGrid");
+    const flightRows = document.getElementById("flightRows");
     const camEmpty = document.getElementById("camEmpty");
 
     const linkQuality = document.getElementById("linkQuality");
@@ -1173,8 +1219,10 @@
     let lastSpokenId = 0;
     let zoom = 1;
     let newsFilter = "all";
-    let camsFilter = "recent";
+    let camsFilter = "gate_open";
     let timeWindowMs = 7 * 24 * 60 * 60 * 1000;
+    let flightsCache = [];
+    let gatesCache = new Map();
 
     const allEvents = [];
     const recentEventTimes = [];
@@ -1254,6 +1302,13 @@
         .trim();
     }
 
+    function localDateYmd(d = new Date()) {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
     function eventTimeMs(event) {
       const raw = event?.receivedAtIso;
       const t = Date.parse(raw);
@@ -1309,6 +1364,149 @@
       const warnWords = ["lost", "missing", "help", "suspicious", "medical", "injury", "bleeding", "stolen"];
       if (warnWords.some((w) => answer.includes(w) || q.includes(w))) return "warn";
       return "info";
+    }
+
+    function pickFlexible(obj, keys = [], patterns = []) {
+      if (!obj || typeof obj !== "object") return "";
+      for (const k of keys) {
+        if (!k) continue;
+        const v = obj[k];
+        if (typeof v === "string" || typeof v === "number") {
+          const s = String(v).trim();
+          if (s) return s;
+        }
+      }
+      const entries = Object.entries(obj);
+      for (const [k, v] of entries) {
+        if (typeof v !== "string" && typeof v !== "number") continue;
+        for (const p of patterns) {
+          try {
+            if (p instanceof RegExp && p.test(k)) {
+              const s = String(v).trim();
+              if (s) return s;
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+      return "";
+    }
+
+    function parseGateAndTerminal(text) {
+      const raw = String(text || "").trim();
+      let terminal = "";
+      let gate = "";
+      const termMatch = raw.match(/(?:^|\\b)(?:t\\s*([1-4])|terminal\\s*([1-4]))\\b/i);
+      const termNo = termMatch?.[1] || termMatch?.[2];
+      if (termNo) terminal = `T${termNo}`;
+
+      const gateMatch = raw.match(/\\b([A-Z]{1,2}\\d{1,3}[A-Z]?)\\b/);
+      if (gateMatch?.[1]) gate = gateMatch[1].toUpperCase();
+
+      return { gate: gate || "-", terminal: terminal || "-" };
+    }
+
+    function clampPct(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return null;
+      if (n < 0) return 0;
+      if (n > 100) return 100;
+      return Math.round(n);
+    }
+
+    function parsePctFromText(text) {
+      const raw = String(text || "");
+      const match =
+        raw.match(/(?:pax|passenger|load|lf)[^\\d%]{0,20}(\\d{1,3})\\s*%/i) ||
+        raw.match(/(\\d{1,3})\\s*%/);
+      if (!match) return null;
+      return clampPct(match[1]);
+    }
+
+    function gateKey(value) {
+      return String(value || "").trim().toUpperCase();
+    }
+
+    function computeGatePaxPct(gateItem, liveItem) {
+      const candidates = [
+        liveItem?.paxPercentage, liveItem?.paxPct, liveItem?.pax_percent, liveItem?.pax, liveItem?.loadFactor,
+        gateItem?.paxPercentage, gateItem?.paxPct, gateItem?.pax_percent, gateItem?.pax, gateItem?.loadFactor,
+      ];
+      for (const c of candidates) {
+        const pct = clampPct(c);
+        if (pct != null) return pct;
+      }
+      const textCandidates = [liveItem?.answer, liveItem?.answerText, liveItem?.response, liveItem?.remark, liveItem?.question];
+      for (const t of textCandidates) {
+        if (typeof t !== "string") continue;
+        const pct = parsePctFromText(t);
+        if (pct != null) return pct;
+      }
+      return null;
+    }
+
+    async function loadGatesCache() {
+      try {
+        const [gatesResp, liveResp] = await Promise.all([
+          fetch("/api/gates20", { cache: "no-store" }),
+          fetch("/api/gates-live?limit=500", { cache: "no-store" }),
+        ]);
+        if (!gatesResp.ok) throw new Error(`HTTP ${gatesResp.status}`);
+        const payload = await gatesResp.json();
+        const livePayload = liveResp.ok ? await liveResp.json() : { gates: {} };
+        const liveMap = livePayload?.gates || {};
+        const items = Array.isArray(payload?.gates) ? payload.gates : [];
+
+        const map = new Map();
+        for (const item of items) {
+          const gate = gateKey(item?.gate);
+          if (!gate) continue;
+          const live = liveMap[gate] || liveMap[gate.toLowerCase()] || {};
+          const status = String(item?.status || "").trim() || "-";
+          const pct = computeGatePaxPct(item, live);
+          map.set(gate, { status, pct });
+        }
+        gatesCache = map;
+      } catch {
+        gatesCache = new Map();
+      }
+    }
+
+    function normalizeFlights(payload) {
+      if (!payload || typeof payload !== "object") return [];
+      const data = payload.data;
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.items)) return data.items;
+      if (data && Array.isArray(data.flights)) return data.flights;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.flights)) return payload.flights;
+      return [];
+    }
+
+    function flightRowToDisplay(row) {
+      const flightNo = pickFlexible(row, ["flightNo", "flightno", "flight_no", "flight"], [/flight.*no/i, /^flight$/i]) || "-";
+      const status = pickFlexible(row, ["status", "flightStatus", "remark"], [/status/i, /remark/i]) || "-";
+      const gateText = pickFlexible(row, ["terminalGate", "terminal_gate", "terminal", "gate"], [/terminal/i, /gate/i]);
+      const parsed = parseGateAndTerminal(gateText);
+      return { flightNo, status, ...parsed };
+    }
+
+    async function loadFlights() {
+      try {
+        const query = new URLSearchParams({
+          date: localDateYmd(),
+          type: "scheduled",
+          flightno: "",
+        });
+        const resp = await fetch(`/api/flights?${query.toString()}`, { cache: "no-store" });
+        const payload = await resp.json();
+        if (!resp.ok || payload?.ok === false) throw new Error(payload?.error || `HTTP ${resp.status}`);
+        const rows = normalizeFlights(payload).map(flightRowToDisplay);
+        flightsCache = rows.filter((r) => r.flightNo !== "-" || r.gate !== "-" || r.terminal !== "-");
+      } catch {
+        flightsCache = [];
+      }
     }
 
     function openModal(event) {
@@ -1388,10 +1586,10 @@
       }
       for (const btn of paneCams.querySelectorAll("[data-cams]")) {
         btn.addEventListener("click", () => {
-          camsFilter = btn.getAttribute("data-cams") || "recent";
+          camsFilter = btn.getAttribute("data-cams") || "gate_open";
           for (const el of paneCams.querySelectorAll("[data-cams]")) el.classList.remove("active");
           btn.classList.add("active");
-          renderCams();
+          renderFlights();
         });
       }
     }
@@ -1512,31 +1710,68 @@
     }
 
     function renderCams() {
+      // legacy name kept; this pane now renders flights.
+      renderFlights();
+    }
+
+    function statusClassFor(text) {
+      const t = normalizeText(text);
+      if (t.includes("cancel") || t.includes("closed")) return "status-bad";
+      if (t.includes("delay") || t.includes("closing") || t.includes("last call")) return "status-warn";
+      if (t.includes("gate open") || t === "open") return "status-ok";
+      return "dim";
+    }
+
+    function renderFlights() {
       if (!layerCams.checked) {
         camsCount.textContent = "0";
         return;
       }
-      const events = filteredEvents();
-      let subset = events.filter((e) => Boolean(e?.frameJpegBase64));
-      if (camsFilter === "answers") {
-        subset = subset.filter((e) => String(e?.answer || "").trim());
+
+      const out = [];
+      for (const row of flightsCache) {
+        const gate = gateKey(row.gate);
+        const gateInfo = gate ? gatesCache.get(gate) : null;
+        const gateStatus = gateInfo?.status || "";
+        const pct = gateInfo?.pct;
+
+        const statusText = gateStatus
+          ? (pct != null ? `${gateStatus} • ${pct}%` : gateStatus)
+          : (row.status || "-");
+
+        out.push({
+          flightNo: row.flightNo || "-",
+          gate: row.gate || "-",
+          terminal: row.terminal || "-",
+          gateStatus,
+          statusText,
+        });
       }
-      subset = subset.slice(-CAMS_MAX).reverse();
+
+      let subset = out;
+      if (camsFilter === "gate_open") {
+        subset = out.filter((r) => normalizeText(r.gateStatus) === "gate open");
+      }
+      subset = subset.slice(0, 20);
+
       camsCount.textContent = String(subset.length);
-      camGrid.innerHTML = "";
+      flightRows.innerHTML = "";
       camEmpty.style.display = subset.length ? "none" : "";
-      for (const ev of subset) {
-        const t = ev?.receivedAtIso ? new Date(ev.receivedAtIso) : null;
-        const wrap = document.createElement("div");
-        wrap.className = "thumb";
-        const mime = ev?.imageMimeType || "image/jpeg";
-        const src = `data:${mime};base64,${ev.frameJpegBase64}`;
-        wrap.innerHTML = `
-          <img alt="Event frame" src="${src}"/>
-          <div class="cap"><span>#${escapeHtml(ev?.id ?? "?")}</span><span>${escapeHtml(t ? t.toLocaleTimeString() : "-")}</span></div>
+
+      if (!subset.length) {
+        flightRows.innerHTML = `<tr><td colspan="4" class="dim">No flights found.</td></tr>`;
+        return;
+      }
+
+      for (const r of subset) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(r.flightNo)}</td>
+          <td>${escapeHtml(r.gate)}</td>
+          <td class="dim">${escapeHtml(r.terminal)}</td>
+          <td class="${escapeHtml(statusClassFor(r.statusText))}">${escapeHtml(r.statusText || "-")}</td>
         `;
-        wrap.addEventListener("click", () => openModal(ev));
-        camGrid.appendChild(wrap);
+        flightRows.appendChild(tr);
       }
     }
 
@@ -1596,7 +1831,7 @@
       const events = filteredEvents();
       renderSignals(events);
       renderNews();
-      renderCams();
+      renderFlights();
       if (layerAi.checked) {
         aiCount.textContent = "1";
         deriveInsights(events);
@@ -1663,6 +1898,14 @@
       fmtAsOf();
       calcRatePerMin();
     }, 1000);
+
+    async function pollFlights() {
+      await Promise.all([loadGatesCache(), loadFlights()]);
+      renderFlights();
+      window.setTimeout(pollFlights, 60_000);
+    }
+
+    pollFlights();
     poll();
   </script>
 </body>
