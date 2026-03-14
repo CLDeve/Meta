@@ -1200,6 +1200,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_text(html, "text/html; charset=utf-8")
             return
 
+        if parsed.path in {"/security-lanes", "/security-lanes.html"}:
+            page_path = Path(__file__).with_name("security-lanes.html")
+            if not page_path.exists():
+                self._send_json({"error": "Missing security-lanes.html"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            html = page_path.read_bytes()
+            self._send_text(html, "text/html; charset=utf-8")
+            return
+
         if parsed.path in {"/aviationstack", "/aviationstack.html"}:
             aviationstack_path = Path(__file__).with_name("aviationstack.html")
             if not aviationstack_path.exists():

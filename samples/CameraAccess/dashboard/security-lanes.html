@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monitor • Security Lanes</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-0: #070809;
+      --bg-1: #0c0d0f;
+      --bg-2: #111317;
+      --panel: rgba(255, 255, 255, 0.045);
+      --panel-border: rgba(255, 255, 255, 0.14);
+      --text: rgba(255, 255, 255, 0.92);
+      --muted: rgba(255, 255, 255, 0.62);
+      --muted-2: rgba(255, 255, 255, 0.46);
+      --green: #4dff97;
+      --amber: #ffbf66;
+      --red: #ff5f6d;
+      --cyan: #59d9ff;
+      --shadow: rgba(0, 0, 0, 0.55);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: var(--sans);
+      background:
+        radial-gradient(1200px 700px at 10% -5%, rgba(89, 217, 255, 0.08), transparent 55%),
+        radial-gradient(900px 650px at 90% 30%, rgba(77, 255, 151, 0.06), transparent 52%),
+        linear-gradient(165deg, var(--bg-0), var(--bg-2));
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.16;
+      background-image:
+        linear-gradient(rgba(89, 217, 255, 0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(89, 217, 255, 0.18) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: radial-gradient(circle at center, black 30%, transparent 82%);
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+      padding: 12px;
+      max-width: 1680px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 10px;
+      height: 10px;
+      border-radius: 0;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(77, 255, 151, 0.65);
+    }
+
+    .brand-title {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    .brand-title .kicker {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.68);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand-title .name {
+      font-family: var(--mono);
+      font-size: 18px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 0;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.28);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      white-space: nowrap;
+    }
+
+    .chip a { color: inherit; text-decoration: none; }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.45);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.28);
+    }
+
+    .dot.live {
+      background: var(--green);
+      box-shadow: 0 0 14px rgba(77, 255, 151, 0.55);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 0;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 60px var(--shadow);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      min-height: 520px;
+    }
+
+    .module {
+      padding: 12px;
+    }
+
+    .module h2 {
+      margin: 0 0 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.74);
+    }
+
+    .kv {
+      display: grid;
+      gap: 8px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.22);
+      border-radius: 0;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.74);
+    }
+
+    .row strong { color: rgba(255, 255, 255, 0.9); font-weight: 650; }
+
+    .control {
+      font-family: var(--mono);
+      color: rgba(255, 255, 255, 0.86);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 0;
+      padding: 6px 8px;
+      outline: none;
+      min-width: 100px;
+      text-align: right;
+    }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--green);
+    }
+
+    .lanes {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .lane {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.18);
+      border-radius: 0;
+      min-height: 170px;
+    }
+
+    .lane .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      font-family: var(--mono);
+    }
+
+    .lane .name {
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .lane .badge {
+      padding: 2px 8px;
+      border-radius: 0;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .lane .badge.ok {
+      border-color: rgba(77, 255, 151, 0.5);
+      background: rgba(77, 255, 151, 0.12);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .lane .badge.warn {
+      border-color: rgba(255, 191, 102, 0.62);
+      background: rgba(255, 191, 102, 0.16);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .lane .badge.bad {
+      border-color: rgba(255, 95, 109, 0.55);
+      background: rgba(255, 95, 109, 0.14);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .lane .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .bar {
+      height: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 0;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: rgba(77, 255, 151, 0.55);
+      transition: width 180ms ease;
+    }
+
+    .note {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.58);
+      line-height: 1.35;
+    }
+
+    @media (max-width: 1050px) {
+      .main { grid-template-columns: 1fr; }
+      .lanes { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-title">
+          <div class="kicker">World</div>
+          <div class="name">Monitor</div>
+        </div>
+        <span class="chip"><span id="liveDot" class="dot"></span><span id="connState">local</span></span>
+      </div>
+      <div class="top-right">
+        <span class="chip"><a href="/">Back to Dashboard</a></span>
+      </div>
+    </header>
+
+    <section class="main">
+      <aside class="panel module" aria-label="Gate settings">
+        <h2>Gate Sample</h2>
+        <div class="kv">
+          <div class="row"><span>Gate</span><strong id="gateName">A12</strong></div>
+          <div class="row"><span>Terminal</span><strong id="gateTerminal">T3</strong></div>
+          <div class="row"><span>Lanes Active</span><strong id="laneCount">3</strong></div>
+          <div class="row">
+            <span>Total Required</span>
+            <strong id="totalRequired">0</strong>
+          </div>
+          <div class="row">
+            <span>Total Assigned</span>
+            <input id="totalAssigned" class="control" type="number" min="0" step="1" value="0" />
+          </div>
+          <div class="row">
+            <span>Shortfall</span>
+            <strong id="totalDelta">0</strong>
+          </div>
+        </div>
+        <div class="note" style="margin-top:10px;">
+          Lane requirements (officers): lane 1 = 5, lane 2 = 8, lane 3 = 13. Lane 4 can be configured.
+        </div>
+      </aside>
+
+      <section class="panel" aria-label="Lane staffing">
+        <div class="module" style="border-bottom: 1px solid rgba(255,255,255,0.12);">
+          <h2>Security Lanes</h2>
+          <div class="note">One gate sample first (A12). Toggle lanes and adjust assigned officers to see readiness.</div>
+        </div>
+        <div id="lanes" class="lanes"></div>
+      </section>
+    </section>
+  </div>
+
+  <script>
+    const liveDot = document.getElementById("liveDot");
+    const connState = document.getElementById("connState");
+    const laneCountEl = document.getElementById("laneCount");
+    const totalRequiredEl = document.getElementById("totalRequired");
+    const totalAssignedEl = document.getElementById("totalAssigned");
+    const totalDeltaEl = document.getElementById("totalDelta");
+    const lanesEl = document.getElementById("lanes");
+
+    const DEFAULT_LANE_REQUIREMENTS = [5, 8, 13, 13];
+
+    const state = {
+      gate: "A12",
+      terminal: "T3",
+      lanes: [
+        { lane: 1, open: true, required: DEFAULT_LANE_REQUIREMENTS[0], assigned: 0 },
+        { lane: 2, open: true, required: DEFAULT_LANE_REQUIREMENTS[1], assigned: 0 },
+        { lane: 3, open: true, required: DEFAULT_LANE_REQUIREMENTS[2], assigned: 0 },
+        { lane: 4, open: false, required: DEFAULT_LANE_REQUIREMENTS[3], assigned: 0 },
+      ],
+    };
+
+    function clamp(n, min, max) {
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function setConnection(ok, text) {
+      connState.textContent = text;
+      liveDot.classList.toggle("live", ok);
+    }
+
+    function laneDelta(l) {
+      if (!l.open) return 0;
+      return Number(l.required || 0) - Number(l.assigned || 0);
+    }
+
+    function laneBadge(l) {
+      if (!l.open) return { text: "disabled", cls: "" };
+      const d = laneDelta(l);
+      if (d <= 0) return { text: "ready", cls: "ok" };
+      if (d <= 2) return { text: "tight", cls: "warn" };
+      return { text: "short", cls: "bad" };
+    }
+
+    function render() {
+      const openLanes = state.lanes.filter((l) => l.open);
+      laneCountEl.textContent = String(openLanes.length);
+
+      const totalRequired = openLanes.reduce((acc, l) => acc + Number(l.required || 0), 0);
+      totalRequiredEl.textContent = String(totalRequired);
+
+      const totalAssigned = Number(totalAssignedEl.value || 0);
+      const totalDelta = totalRequired - totalAssigned;
+      totalDeltaEl.textContent = (totalDelta > 0 ? `${totalDelta}` : "0");
+      totalDeltaEl.style.color = totalDelta > 0 ? "rgba(255, 95, 109, 0.9)" : "rgba(77, 255, 151, 0.86)";
+
+      lanesEl.innerHTML = "";
+      for (const l of state.lanes) {
+        const d = laneDelta(l);
+        const badge = laneBadge(l);
+        const required = Number(l.required || 0);
+        const assigned = Number(l.assigned || 0);
+        const pct = l.open && required > 0 ? clamp((assigned / required) * 100, 0, 140) : 0;
+        const fillColor = d <= 0 ? "rgba(77, 255, 151, 0.55)" : (d <= 2 ? "rgba(255, 191, 102, 0.55)" : "rgba(255, 95, 109, 0.55)");
+
+        const card = document.createElement("article");
+        card.className = "lane";
+        card.innerHTML = `
+          <div class="head">
+            <div class="name">Lane ${l.lane}</div>
+            <div class="badge ${badge.cls}">${badge.text}</div>
+          </div>
+          <div class="grid">
+            <label class="toggle">
+              <input data-lane="${l.lane}" data-k="open" type="checkbox" ${l.open ? "checked" : ""} />
+              Enabled
+            </label>
+            <div class="row" style="padding:8px 10px;">
+              <span>Required</span>
+              <input data-lane="${l.lane}" data-k="required" class="control" type="number" min="0" step="1" value="${required}" />
+            </div>
+            <div class="row" style="padding:8px 10px;">
+              <span>Assigned</span>
+              <input data-lane="${l.lane}" data-k="assigned" class="control" type="number" min="0" step="1" value="${assigned}" />
+            </div>
+            <div class="row" style="padding:8px 10px;">
+              <span>Delta</span>
+              <strong style="color:${d > 0 ? "rgba(255, 95, 109, 0.9)" : "rgba(77, 255, 151, 0.86)"};">${l.open ? (d > 0 ? `-${d}` : `+${Math.abs(d)}`) : "-"}</strong>
+            </div>
+            <div class="bar" aria-label="Lane readiness">
+              <div class="fill" style="width:${pct.toFixed(0)}%; background:${fillColor};"></div>
+            </div>
+            <div class="note">${l.open ? `Lane ${l.lane} needs ${required} officers.` : `Lane ${l.lane} disabled.`}</div>
+          </div>
+        `;
+        lanesEl.appendChild(card);
+      }
+    }
+
+    lanesEl.addEventListener("input", (e) => {
+      const el = e.target;
+      if (!(el instanceof HTMLInputElement)) return;
+      const laneNo = Number(el.getAttribute("data-lane") || 0);
+      const k = el.getAttribute("data-k") || "";
+      const lane = state.lanes.find((x) => x.lane === laneNo);
+      if (!lane || !k) return;
+      if (k === "open") {
+        lane.open = Boolean(el.checked);
+      } else if (k === "required") {
+        lane.required = clamp(Number(el.value || 0), 0, 99);
+      } else if (k === "assigned") {
+        lane.assigned = clamp(Number(el.value || 0), 0, 99);
+      }
+      render();
+    });
+
+    totalAssignedEl.addEventListener("input", () => render());
+
+    setConnection(true, "local");
+    totalAssignedEl.value = "18";
+    state.lanes[0].assigned = 5;
+    state.lanes[1].assigned = 7;
+    state.lanes[2].assigned = 6;
+    render();
+  </script>
+</body>
+</html>
+
