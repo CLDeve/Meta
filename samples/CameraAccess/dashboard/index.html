@@ -3,20 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Situation Awareness Dashboard</title>
+  <title>Monitor • Situation Awareness</title>
   <style>
     :root {
       color-scheme: dark;
-      --bg-1: #060607;
-      --bg-2: #0b0b0c;
-      --panel: rgba(255, 255, 255, 0.08);
-      --panel-border: rgba(243, 244, 246, 0.16);
-      --text: #f3f4f6;
-      --muted: rgba(243, 244, 246, 0.68);
-      --ok: #f3f4f6;
-      --warn: rgba(243, 244, 246, 0.68);
-      --bad: #f3f4f6;
-      --accent: #f3f4f6;
+      --bg-0: #070809;
+      --bg-1: #0c0d0f;
+      --bg-2: #111317;
+      --panel: rgba(255, 255, 255, 0.045);
+      --panel-2: rgba(255, 255, 255, 0.06);
+      --panel-border: rgba(255, 255, 255, 0.14);
+      --panel-border-2: rgba(255, 255, 255, 0.22);
+      --text: rgba(255, 255, 255, 0.92);
+      --muted: rgba(255, 255, 255, 0.62);
+      --muted-2: rgba(255, 255, 255, 0.46);
+      --green: #4dff97;
+      --amber: #ffbf66;
+      --red: #ff5f6d;
+      --cyan: #59d9ff;
+      --blue: #4aa3ff;
+      --shadow: rgba(0, 0, 0, 0.55);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
     }
 
     * { box-sizing: border-box; }
@@ -24,250 +32,1161 @@
     body {
       margin: 0;
       color: var(--text);
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: var(--sans);
       background:
-        radial-gradient(1200px 700px at 10% 0%, rgba(255,255,255,0.10), transparent 55%),
-        radial-gradient(900px 600px at 80% 20%, rgba(255,255,255,0.06), transparent 55%),
-        linear-gradient(160deg, var(--bg-1), var(--bg-2));
+        radial-gradient(1200px 700px at 10% -5%, rgba(89, 217, 255, 0.08), transparent 55%),
+        radial-gradient(900px 650px at 90% 30%, rgba(77, 255, 151, 0.06), transparent 52%),
+        linear-gradient(165deg, var(--bg-0), var(--bg-2));
       min-height: 100vh;
+      overflow-x: hidden;
     }
 
-    .shell {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 24px;
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.16;
+      background-image:
+        linear-gradient(rgba(89, 217, 255, 0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(89, 217, 255, 0.18) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: radial-gradient(circle at center, black 30%, transparent 82%);
     }
 
-    .top {
+    .app {
+      min-height: 100vh;
       display: grid;
-      grid-template-columns: 1.8fr 1fr;
-      gap: 16px;
-      margin-bottom: 16px;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+      padding: 12px;
+      max-width: 1680px;
+      margin: 0 auto;
     }
 
     .panel {
       background: var(--panel);
       border: 1px solid var(--panel-border);
-      border-radius: 18px;
-      backdrop-filter: blur(8px);
-      padding: 16px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 60px var(--shadow);
     }
 
-    .title {
-      font-size: 28px;
-      letter-spacing: 0.4px;
-      margin: 0 0 6px;
-    }
-
-    .subtitle {
-      margin: 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .status-row {
-      display: flex;
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
       gap: 10px;
       align-items: center;
-      justify-content: flex-end;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(77, 255, 151, 0.65);
+    }
+
+    .brand-title {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    .brand-title .kicker {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.68);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand-title .name {
+      font-family: var(--mono);
+      font-size: 18px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
-    .pill {
-      border: 1px solid var(--panel-border);
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
       border-radius: 999px;
-      padding: 7px 12px;
-      font-size: 13px;
-      color: var(--muted);
-      background: rgba(255, 255, 255, 0.05);
-    }
-
-    .pill strong { color: var(--text); }
-
-    .pill.link {
-      color: var(--text);
-      text-decoration: none;
-      display: inline-block;
-    }
-
-    .pill.toggle {
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .pill.toggle input {
-      margin: 0;
-      width: 14px;
-      height: 14px;
-      accent-color: #f3f4f6;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.28);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      white-space: nowrap;
     }
 
     .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 10px;
-      display: inline-block;
-      margin-right: 6px;
-      vertical-align: middle;
-      background: var(--warn);
-      box-shadow: 0 0 10px var(--warn);
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.45);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.28);
     }
 
-    .dot.ok {
-      background: var(--ok);
-      box-shadow: 0 0 10px var(--ok);
+    .dot.live {
+      background: var(--green);
+      box-shadow: 0 0 14px rgba(77, 255, 151, 0.55);
     }
 
-    .feed {
+    .chip a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .chip button {
+      all: unset;
+      cursor: pointer;
+      color: inherit;
+    }
+
+    .chip .kbd {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.52);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .chip input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--green);
+    }
+
+    .chip select,
+    .chip input[type="search"] {
+      font-family: var(--mono);
+      color: rgba(255, 255, 255, 0.86);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      padding: 6px 8px;
+      outline: none;
+    }
+
+    .chip input[type="search"] { width: min(320px, 42vw); }
+
+    .main {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: 320px minmax(0, 1fr) 340px;
+      gap: 10px;
+      min-height: 520px;
     }
 
-    .event {
+    .module {
+      padding: 12px;
+    }
+
+    .module h2 {
+      margin: 0 0 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.74);
+    }
+
+    .subhead {
       display: flex;
-      flex-direction: column;
-      gap: 14px;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.76);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .subhead time { color: rgba(255, 255, 255, 0.56); letter-spacing: 0.05em; }
+
+    .btnrow {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .btn {
+      all: unset;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.045);
+      color: rgba(255, 255, 255, 0.72);
+      user-select: none;
+    }
+
+    .btn.active {
+      border-color: rgba(77, 255, 151, 0.5);
+      background: rgba(77, 255, 151, 0.12);
+      color: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 0 22px rgba(77, 255, 151, 0.18);
+    }
+
+    .layers {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .layers li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.22);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.74);
+    }
+
+    .layers label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      min-width: 0;
+    }
+
+    .layers input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--green);
+    }
+
+    .badge {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.72);
+      white-space: nowrap;
+    }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background:
+        radial-gradient(900px 520px at 30% 30%, rgba(74, 163, 255, 0.12), transparent 60%),
+        radial-gradient(720px 480px at 70% 60%, rgba(255, 95, 109, 0.09), transparent 60%),
+        linear-gradient(160deg, rgba(6, 8, 10, 0.9), rgba(13, 15, 18, 0.92));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 18px 60px var(--shadow);
+    }
+
+    .stage-header {
+      position: absolute;
+      inset: 0 0 auto 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      gap: 10px;
+      z-index: 4;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.76);
+    }
+
+    .stage-header .left,
+    .stage-header .right { display: inline-flex; align-items: center; gap: 8px; }
+
+    .stage-header .right { pointer-events: auto; }
+
+    .seg {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.22);
+    }
+
+    .seg button {
+      all: unset;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.64);
+    }
+
+    .seg button.active {
+      color: rgba(0, 0, 0, 0.92);
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(77, 255, 151, 0.35);
+    }
+
+    .world {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      opacity: 0.96;
+    }
+
+    .world svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      filter: saturate(0.96) contrast(1.05);
+    }
+
+    .signal-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .sig {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(89, 217, 255, 0.85);
+      box-shadow: 0 0 14px rgba(89, 217, 255, 0.46);
+      transform: translate(-50%, -50%);
+      opacity: 0.9;
+    }
+
+    .sig.hot {
+      width: 8px;
+      height: 8px;
+      background: rgba(255, 95, 109, 0.9);
+      box-shadow: 0 0 16px rgba(255, 95, 109, 0.55);
+    }
+
+    .sig.warn {
+      background: rgba(255, 191, 102, 0.92);
+      box-shadow: 0 0 14px rgba(255, 191, 102, 0.45);
+    }
+
+    .sig.pulse::after {
+      content: "";
+      position: absolute;
+      inset: -12px;
+      border-radius: 999px;
+      border: 1px solid rgba(89, 217, 255, 0.32);
+      animation: ping 1.6s ease-out infinite;
+    }
+
+    @keyframes ping {
+      0% { transform: scale(0.25); opacity: 0.8; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+
+    .zoom {
+      position: absolute;
+      z-index: 4;
+      right: 12px;
+      top: 52px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .zoom button {
+      all: unset;
+      cursor: pointer;
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(0, 0, 0, 0.28);
+      color: rgba(255, 255, 255, 0.72);
+      font-family: var(--mono);
+      font-size: 16px;
+      user-select: none;
+    }
+
+    .zoom button:active { transform: translateY(1px); }
+
+    .map-viewport {
+      position: absolute;
+      inset: 0;
+      transform-origin: center;
+      transition: transform 140ms ease;
+    }
+
+    .map-viewport.mode3d {
+      transform: perspective(1200px) rotateX(14deg) scale(1.02);
+    }
+
+    .rightcol {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .kv {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .kv .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.72);
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.22);
+    }
+
+    .kv .row strong { color: rgba(255, 255, 255, 0.9); font-weight: 600; }
+
+    .lower {
+      display: grid;
+      grid-template-columns: 1.3fr 1.7fr 1fr;
+      gap: 10px;
       align-items: stretch;
+      min-height: 330px;
+    }
+
+    .pane {
+      padding: 12px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .pane .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.74);
+      min-width: 0;
+    }
+
+    .pane .header .tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .tab {
+      all: unset;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.62);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      user-select: none;
+    }
+
+    .tab.active {
+      border-color: rgba(89, 217, 255, 0.42);
+      background: rgba(89, 217, 255, 0.12);
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    .scroll {
+      overflow: auto;
+      min-height: 0;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(0, 0, 0, 0.18);
+    }
+
+    .news {
+      list-style: none;
+      margin: 0;
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .news li {
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.035);
+      padding: 10px;
+      display: grid;
+      gap: 6px;
       cursor: pointer;
     }
 
-    .frame {
-      width: 100%;
-      aspect-ratio: 4 / 3;
-      border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      object-fit: cover;
-      background: rgba(0, 0, 0, 0.35);
-      min-height: 96px;
-      max-height: 160px;
+    .news .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.58);
     }
 
-    .meta h3 {
-      margin: 0 0 6px;
+    .news .headline {
       font-size: 13px;
-      line-height: 1.3;
-    }
-
-    .meta p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.4;
-      font-size: 14px;
-    }
-
-    .line {
-      margin-top: 8px;
-      padding: 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: rgba(255, 255, 255, 0.03);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .line.answer { border-color: rgba(77, 240, 181, 0.45); }
-    .line.command { border-color: rgba(68, 165, 255, 0.55); }
-    .line.error { border-color: rgba(255, 143, 155, 0.5); color: #ffd6db; }
-    .priority-tag {
-      display: inline-block;
-      margin-left: 6px;
-      padding: 2px 7px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      font-size: 10px;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      color: #d8e8ff;
-      background: rgba(68, 165, 255, 0.2);
-    }
-
-    .line .text {
+      color: rgba(255, 255, 255, 0.86);
+      line-height: 1.35;
       display: -webkit-box;
-      margin-top: 4px;
-      overflow: hidden;
-      text-overflow: ellipsis;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
-      word-break: break-word;
+      overflow: hidden;
     }
 
-    .event.expanded .line .text {
+    .news .snippet {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.62);
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .cam-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .thumb {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.03);
+      aspect-ratio: 4 / 3;
+      cursor: pointer;
+      min-height: 70px;
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
       display: block;
-      overflow: visible;
-      text-overflow: unset;
-      -webkit-line-clamp: unset;
+      filter: saturate(1.05) contrast(1.02);
     }
 
-    .expand-hint {
-      margin-top: 8px;
-      color: var(--muted);
+    .thumb .cap {
+      position: absolute;
+      inset: auto 0 0 0;
+      padding: 6px 8px;
+      font-family: var(--mono);
       font-size: 11px;
+      color: rgba(255, 255, 255, 0.78);
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,0.7));
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .ai-box {
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .brief {
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.035);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .brief .t {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.68);
+    }
+
+    .brief .p {
+      margin: 0;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 11.5em;
+      overflow: auto;
+    }
+
+    .posture {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .posture .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0,0,0,0.22);
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.74);
+    }
+
+    .pillcrit {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 95, 109, 0.55);
+      background: rgba(255, 95, 109, 0.14);
+      color: rgba(255, 255, 255, 0.9);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .pillok {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(77, 255, 151, 0.5);
+      background: rgba(77, 255, 151, 0.12);
+      color: rgba(255, 255, 255, 0.9);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .pillelev {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 191, 102, 0.62);
+      background: rgba(255, 191, 102, 0.16);
+      color: rgba(255, 255, 255, 0.9);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
     }
 
     .empty {
       text-align: center;
       color: var(--muted);
-      font-size: 14px;
-      padding: 30px 16px;
+      font-size: 13px;
+      padding: 28px 12px;
+      font-family: var(--mono);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      place-items: center;
+      background: rgba(0,0,0,0.62);
+      backdrop-filter: blur(6px);
+      padding: 14px;
+    }
+
+    .modal.open { display: grid; }
+
+    .modal-card {
+      width: min(1100px, 98vw);
+      max-height: min(86vh, 900px);
+      overflow: auto;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(10, 12, 14, 0.92);
+      box-shadow: 0 26px 80px rgba(0,0,0,0.75);
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      font-family: var(--mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.76);
+    }
+
+    .modal-body {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1.1fr;
+      gap: 12px;
+    }
+
+    .modal-body img {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.03);
+      object-fit: cover;
+      min-height: 260px;
+    }
+
+    .modal-body .textblock {
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.035);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .kvline {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.74);
+      line-height: 1.5;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .kvline strong {
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 650;
+    }
+
+    .close-btn {
+      all: unset;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.72);
+      user-select: none;
+    }
+
+    .close-btn:active { transform: translateY(1px); }
+
+    @media (max-width: 1200px) {
+      .main { grid-template-columns: 300px minmax(0, 1fr) 320px; }
+      .lower { grid-template-columns: 1.25fr 1.75fr 1fr; }
+      .cam-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
 
     @media (max-width: 980px) {
-      .top { grid-template-columns: 1fr; }
-      .status-row { justify-content: flex-start; }
-      .feed { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .event { gap: 12px; }
+      .app { padding: 10px; }
+      .main { grid-template-columns: 1fr; }
+      .lower { grid-template-columns: 1fr; }
+      .cam-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .modal-body { grid-template-columns: 1fr; }
+      .zoom { top: 58px; }
     }
 
-    @media (max-width: 640px) {
-      .feed { grid-template-columns: 1fr; }
+    @media (max-width: 520px) {
+      .chip input[type="search"] { width: 46vw; }
+      .cam-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .btnrow { gap: 6px; }
+      .btn { padding: 6px 9px; }
     }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <section class="top">
-      <div class="panel">
-        <h1 class="title">Situation Awareness Dashboard</h1>
-        <p class="subtitle">Live events from glasses-assisted questioning</p>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-title">
+          <div class="kicker">World</div>
+          <div class="name">Monitor</div>
+        </div>
+        <span class="chip" title="Connection state"><span id="liveDot" class="dot"></span><span id="connState">connecting</span></span>
+        <span class="chip" title="UTC clock"><span class="kbd">UTC</span><span id="utcClock">--:--:--</span></span>
       </div>
-      <div class="panel status-row">
-        <a class="pill link" href="/gates">Gates Page</a>
-        <a class="pill link" href="/flights">Flights Page</a>
-        <a class="pill link" href="/lost-found">Lost &amp; Found</a>
-        <a class="pill link" href="/live-pov">Live POV</a>
-        <a class="pill link" href="/people-count">People Count</a>
-        <a class="pill link" href="/airspace">Airspace Map</a>
-        <a class="pill link" href="/aviationstack">Aviationstack</a>
-        <a class="pill link" href="/aviationstack-flights">Aviationstack Flights</a>
-        <label class="pill toggle" title="Speak new answers on this browser (laptop audio)">
+      <div class="top-right">
+        <span class="chip">
+          <label for="regionSelect" style="color: rgba(255,255,255,0.66);">Mode</label>
+          <select id="regionSelect" aria-label="Mode">
+            <option value="global" selected>Global</option>
+            <option value="sin">SIN</option>
+            <option value="t1">Terminal 1</option>
+            <option value="t2">Terminal 2</option>
+            <option value="t3">Terminal 3</option>
+            <option value="t4">Terminal 4</option>
+          </select>
+        </span>
+        <span class="chip" title="Quick links">
+          <a href="/gates">Gates</a>
+          <span style="opacity:0.45;">|</span>
+          <a href="/flights">Flights</a>
+          <span style="opacity:0.45;">|</span>
+          <a href="/lost-found">Lost&amp;Found</a>
+          <span style="opacity:0.45;">|</span>
+          <a href="/live-pov">Live POV</a>
+          <span style="opacity:0.45;">|</span>
+          <a href="/worldview">Worldview</a>
+        </span>
+        <span class="chip" title="Search events (question/answer)">
+          <span class="kbd">⌘K</span>
+          <input id="searchBox" type="search" placeholder="Search" autocomplete="off" />
+        </span>
+        <span class="chip" title="Speak new answers on this browser (laptop audio)">
           <input id="speakToggle" type="checkbox" />
           Speak
-        </label>
-        <div class="pill"><span id="liveDot" class="dot"></span><strong id="connState">connecting</strong></div>
-        <div class="pill">events: <strong id="eventCount">0</strong></div>
-        <div class="pill">last id: <strong id="lastId">0</strong></div>
+        </span>
+        <span class="chip" title="Event counters">
+          events <strong id="eventCount">0</strong>
+          <span style="opacity:0.45;">•</span>
+          last <strong id="lastId">0</strong>
+        </span>
       </div>
+    </header>
+
+    <section class="main">
+      <aside class="panel module">
+        <div class="subhead">
+          <span>Global Situation</span>
+          <time id="asOf">SAT, 07 MAR 2026 15:25:09 UTC</time>
+        </div>
+        <div class="btnrow" id="timeBtns" aria-label="Time filter"></div>
+        <h2>Layers</h2>
+        <ul class="layers">
+          <li>
+            <label><input id="layerSignals" type="checkbox" checked /> Event Signals</label>
+            <span class="badge" id="signalsCount">0</span>
+          </li>
+          <li>
+            <label><input id="layerNews" type="checkbox" checked /> Live News</label>
+            <span class="badge" id="newsCount">0</span>
+          </li>
+          <li>
+            <label><input id="layerCams" type="checkbox" checked /> Live Webcams</label>
+            <span class="badge" id="camsCount">0</span>
+          </li>
+          <li>
+            <label><input id="layerAi" type="checkbox" checked /> AI Insights</label>
+            <span class="badge" id="aiCount">0</span>
+          </li>
+        </ul>
+      </aside>
+
+      <article class="stage" aria-label="Operational map">
+        <div class="stage-header">
+          <span class="left"><span style="opacity:0.76;">Global</span><span style="opacity:0.35;">/</span><span id="stageLabel">Situation Map</span></span>
+          <span class="right">
+            <span class="seg" role="group" aria-label="Map mode">
+              <button id="mode2d" class="active" type="button">2D</button>
+              <button id="mode3d" type="button">3D</button>
+            </span>
+          </span>
+        </div>
+        <div class="zoom" aria-label="Zoom controls">
+          <button id="zoomIn" type="button" title="Zoom in">+</button>
+          <button id="zoomOut" type="button" title="Zoom out">−</button>
+          <button id="zoomReset" type="button" title="Reset zoom">⟲</button>
+        </div>
+        <div id="mapViewport" class="map-viewport">
+          <div class="world" aria-hidden="true">
+            <svg viewBox="0 0 1000 520" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="ocean" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="rgba(6,16,24,0.98)"/>
+                  <stop offset="100%" stop-color="rgba(5,10,14,0.96)"/>
+                </linearGradient>
+                <linearGradient id="land" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(170,190,205,0.18)"/>
+                  <stop offset="100%" stop-color="rgba(120,150,170,0.12)"/>
+                </linearGradient>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="2.2" result="b"/>
+                  <feColorMatrix in="b" type="matrix"
+                    values="0 0 0 0 0.15  0 0 0 0 0.65  0 0 0 0 0.85  0 0 0 0.55 0" result="g"/>
+                  <feMerge>
+                    <feMergeNode in="g"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
+              <rect width="1000" height="520" fill="url(#ocean)"/>
+              <g opacity="0.55">
+                <path fill="url(#land)" d="M88 167c58-42 132-56 202-46 38 5 64 18 94 40 16 12 32 13 50 6 16-6 28-4 38 12 13 20 10 48-9 63-33 27-92 44-160 52-66 8-118 6-156-6-28-9-44-26-58-51-12-21-21-46-1-70z"/>
+                <path fill="url(#land)" d="M397 139c29-24 86-43 138-36 48 6 78 34 92 66 16 35 27 67 3 88-22 19-58 14-86 10-24-3-45 2-62 15-18 13-45 23-68 15-34-11-44-45-50-78-6-33 4-63 33-80z"/>
+                <path fill="url(#land)" d="M622 146c36-26 104-41 164-31 42 7 70 25 90 50 23 28 30 56 19 78-13 27-48 46-90 55-40 9-70 5-105-6-22-7-44-6-64 1-21 7-42 6-56-10-18-20-10-69 42-105z"/>
+                <path fill="url(#land)" d="M743 305c42-24 94-22 138-7 39 13 63 36 77 65 12 26 11 54-13 72-27 20-66 14-98 2-23-9-41-8-60 1-22 11-50 15-78 2-35-16-42-57-34-84 7-25 28-39 68-51z"/>
+                <path fill="url(#land)" d="M482 302c28-24 79-36 118-27 41 10 61 35 72 59 13 29 6 54-20 66-28 13-57 6-79 0-20-5-37-2-52 9-18 14-45 20-67 8-27-15-33-44-28-67 5-22 19-35 56-48z"/>
+              </g>
+              <g opacity="0.7" filter="url(#glow)">
+                <path d="M0 260H1000" stroke="rgba(89,217,255,0.14)" stroke-width="1"/>
+                <path d="M500 0V520" stroke="rgba(89,217,255,0.14)" stroke-width="1"/>
+                <path d="M0 130H1000" stroke="rgba(89,217,255,0.08)" stroke-width="1"/>
+                <path d="M0 390H1000" stroke="rgba(89,217,255,0.08)" stroke-width="1"/>
+                <path d="M250 0V520" stroke="rgba(89,217,255,0.06)" stroke-width="1"/>
+                <path d="M750 0V520" stroke="rgba(89,217,255,0.06)" stroke-width="1"/>
+              </g>
+            </svg>
+          </div>
+          <div id="signalLayer" class="signal-layer"></div>
+        </div>
+      </article>
+
+      <aside class="rightcol">
+        <div class="panel module kv" aria-label="Telemetry">
+          <h2>Telemetry</h2>
+          <div class="row"><span>Link</span><strong id="linkQuality">unknown</strong></div>
+          <div class="row"><span>Events / min</span><strong id="ratePerMin">0</strong></div>
+          <div class="row"><span>Latest Intent</span><strong id="latestIntent">n/a</strong></div>
+          <div class="row"><span>Active Alerts</span><strong id="activeAlerts">0</strong></div>
+        </div>
+        <div class="panel module kv" aria-label="Posture">
+          <h2>AI Strategic Posture</h2>
+          <div class="row"><span>Theater</span><strong id="postureTheater">global</strong></div>
+          <div class="row"><span>Status</span><strong id="postureStatus">stable</strong></div>
+          <div class="row"><span>Level</span><strong id="postureLevel">normal</strong></div>
+        </div>
+      </aside>
     </section>
 
-    <section class="feed" id="feed"></section>
-    <div id="empty" class="panel empty">No events yet. Ask from the phone app to populate this dashboard.</div>
+    <section class="lower">
+      <div id="paneNews" class="panel pane" aria-label="Live news">
+        <div class="header">
+          <span>Live News</span>
+          <span class="tabs">
+            <button class="tab active" data-news="all" type="button">All</button>
+            <button class="tab" data-news="lost_found" type="button">Lost&amp;Found</button>
+            <button class="tab" data-news="live_pov" type="button">Live POV</button>
+          </span>
+        </div>
+        <div class="scroll" id="newsScroll">
+          <ul class="news" id="newsList"></ul>
+          <div class="empty" id="newsEmpty">No events yet</div>
+        </div>
+      </div>
+
+      <div id="paneCams" class="panel pane" aria-label="Live webcams">
+        <div class="header">
+          <span>Live Webcams</span>
+          <span class="tabs">
+            <button class="tab active" data-cams="recent" type="button">Recent</button>
+            <button class="tab" data-cams="answers" type="button">Answers</button>
+          </span>
+        </div>
+        <div class="scroll">
+          <div class="cam-grid" id="camGrid"></div>
+          <div class="empty" id="camEmpty">No frames yet</div>
+        </div>
+      </div>
+
+      <div id="paneAi" class="panel pane" aria-label="AI insights">
+        <div class="header">
+          <span>AI Insights</span>
+          <span class="chip" style="padding:4px 8px; font-size:11px; border-color: rgba(255,255,255,0.14);">
+            <span class="dot" id="aiLiveDot"></span>
+            <span id="aiLiveText">idle</span>
+          </span>
+        </div>
+        <div class="scroll">
+          <div class="ai-box">
+            <div class="brief">
+              <div class="t"><span>World Brief</span><span id="briefWhen">--</span></div>
+              <p class="p" id="briefText">Waiting for events from /api/events…</p>
+            </div>
+            <div class="posture">
+              <div class="row">
+                <span>Assessment</span>
+                <span id="assessPill" class="pillok">OK</span>
+              </div>
+              <div class="row">
+                <span>Key Signal</span>
+                <strong id="keySignal">n/a</strong>
+              </div>
+              <div class="row">
+                <span>Notes</span>
+                <strong id="keyNotes">n/a</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-label="Event detail">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div id="modalTitle">Event</div>
+        <button id="modalClose" class="close-btn" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <img id="modalImg" alt="Captured frame" />
+        <div class="textblock">
+          <div class="kvline"><strong>When:</strong> <span id="modalWhen">-</span></div>
+          <div class="kvline"><strong>Type:</strong> <span id="modalType">-</span></div>
+          <div class="kvline"><strong>Question:</strong>\n<span id="modalQ">-</span></div>
+          <div class="kvline"><strong>Answer:</strong>\n<span id="modalA">-</span></div>
+          <div class="kvline" id="modalErrWrap" style="display:none;"><strong>AI Error:</strong>\n<span id="modalErr">-</span></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
-    const feed = document.getElementById("feed");
-    const empty = document.getElementById("empty");
     const connState = document.getElementById("connState");
     const liveDot = document.getElementById("liveDot");
+    const aiLiveDot = document.getElementById("aiLiveDot");
+    const aiLiveText = document.getElementById("aiLiveText");
     const eventCount = document.getElementById("eventCount");
     const lastIdEl = document.getElementById("lastId");
+    const utcClock = document.getElementById("utcClock");
+    const asOf = document.getElementById("asOf");
+    const stageLabel = document.getElementById("stageLabel");
+    const regionSelect = document.getElementById("regionSelect");
+    const searchBox = document.getElementById("searchBox");
     const speakToggle = document.getElementById("speakToggle");
 
-    const MAX_VISIBLE_CARDS = 100;
+    const layerSignals = document.getElementById("layerSignals");
+    const layerNews = document.getElementById("layerNews");
+    const layerCams = document.getElementById("layerCams");
+    const layerAi = document.getElementById("layerAi");
+
+    const signalsCount = document.getElementById("signalsCount");
+    const newsCount = document.getElementById("newsCount");
+    const camsCount = document.getElementById("camsCount");
+    const aiCount = document.getElementById("aiCount");
+
+    const signalLayer = document.getElementById("signalLayer");
+    const mapViewport = document.getElementById("mapViewport");
+    const mode2d = document.getElementById("mode2d");
+    const mode3d = document.getElementById("mode3d");
+    const zoomIn = document.getElementById("zoomIn");
+    const zoomOut = document.getElementById("zoomOut");
+    const zoomReset = document.getElementById("zoomReset");
+
+    const paneNews = document.getElementById("paneNews");
+    const paneCams = document.getElementById("paneCams");
+    const paneAi = document.getElementById("paneAi");
+    const newsList = document.getElementById("newsList");
+    const newsEmpty = document.getElementById("newsEmpty");
+    const camGrid = document.getElementById("camGrid");
+    const camEmpty = document.getElementById("camEmpty");
+
+    const linkQuality = document.getElementById("linkQuality");
+    const ratePerMin = document.getElementById("ratePerMin");
+    const latestIntent = document.getElementById("latestIntent");
+    const activeAlerts = document.getElementById("activeAlerts");
+
+    const postureTheater = document.getElementById("postureTheater");
+    const postureStatus = document.getElementById("postureStatus");
+    const postureLevel = document.getElementById("postureLevel");
+
+    const briefWhen = document.getElementById("briefWhen");
+    const briefText = document.getElementById("briefText");
+    const assessPill = document.getElementById("assessPill");
+    const keySignal = document.getElementById("keySignal");
+    const keyNotes = document.getElementById("keyNotes");
+
+    const modal = document.getElementById("modal");
+    const modalClose = document.getElementById("modalClose");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalImg = document.getElementById("modalImg");
+    const modalWhen = document.getElementById("modalWhen");
+    const modalType = document.getElementById("modalType");
+    const modalQ = document.getElementById("modalQ");
+    const modalA = document.getElementById("modalA");
+    const modalErrWrap = document.getElementById("modalErrWrap");
+    const modalErr = document.getElementById("modalErr");
+
+    const MAX_EVENTS = 520;
+    const NEWS_MAX = 14;
+    const CAMS_MAX = 12;
+    const SIGS_MAX = 220;
+
     let latestId = 0;
     let total = 0;
     let lastSpokenId = 0;
+    let zoom = 1;
+    let newsFilter = "all";
+    let camsFilter = "recent";
+    let timeWindowMs = 7 * 24 * 60 * 60 * 1000;
+
+    const allEvents = [];
+    const recentEventTimes = [];
+
+    const TIME_FILTERS = [
+      { key: "1h", label: "1h", ms: 60 * 60 * 1000 },
+      { key: "6h", label: "6h", ms: 6 * 60 * 60 * 1000 },
+      { key: "24h", label: "24h", ms: 24 * 60 * 60 * 1000 },
+      { key: "48h", label: "48h", ms: 48 * 60 * 60 * 1000 },
+      { key: "7d", label: "7d", ms: 7 * 24 * 60 * 60 * 1000 },
+      { key: "all", label: "All", ms: Infinity },
+    ];
 
     function isSpeakEnabled() {
       return Boolean(speakToggle?.checked) && "speechSynthesis" in window;
@@ -291,57 +1210,36 @@
 
     function setConnection(ok, text) {
       connState.textContent = text;
-      liveDot.classList.toggle("ok", ok);
+      liveDot.classList.toggle("live", ok);
+      linkQuality.textContent = ok ? "good" : "offline";
     }
 
-    function cardFor(event) {
-      const card = document.createElement("article");
-      card.className = "panel event";
-
-      const frameHtml = event.frameJpegBase64
-        ? `<img class="frame" alt="Captured frame" src="data:${event.imageMimeType || "image/jpeg"};base64,${event.frameJpegBase64}"/>`
-        : `<div class="frame" style="display:flex;align-items:center;justify-content:center;color:#90a8c8;">No frame</div>`;
-
-      const asked = event.question || "-";
-      const answer = event.answer || "(no answer)";
-      const err = event.aiError || "";
-      const when = event.receivedAtIso || "-";
-
-      card.innerHTML = `
-        <div>${frameHtml}</div>
-        <div class="meta">
-          <h3>#${event.id} • ${new Date(when).toLocaleString()}</h3>
-          <div class="line"><strong>Question:</strong><div class="text">${escapeHtml(asked)}</div></div>
-          <div class="line answer"><strong>Answer:</strong><div class="text">${escapeHtml(String(answer))}</div></div>
-          ${err ? `<div class="line error"><strong>AI Error:</strong><div class="text">${escapeHtml(String(err))}</div></div>` : ""}
-          <div class="expand-hint">Click card to expand</div>
-        </div>
-      `;
-      card.tabIndex = 0;
-      card.setAttribute("role", "button");
-      card.setAttribute("aria-label", `Event ${event.id}. Click to expand or collapse.`);
-      card.addEventListener("click", () => toggleCardExpanded(card));
-      card.addEventListener("keydown", (evt) => {
-        if (evt.key === "Enter" || evt.key === " ") {
-          evt.preventDefault();
-          toggleCardExpanded(card);
-        }
-      });
-      return card;
+    function fmtUtcClock(d = new Date()) {
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      const ss = String(d.getUTCSeconds()).padStart(2, "0");
+      utcClock.textContent = `${hh}:${mm}:${ss}`;
     }
 
-    function toggleCardExpanded(card) {
-      card.classList.toggle("expanded");
-      const hint = card.querySelector(".expand-hint");
-      if (hint) {
-        hint.textContent = card.classList.contains("expanded")
-          ? "Click card to collapse"
-          : "Click card to expand";
-      }
+    function fmtAsOf(d = new Date()) {
+      const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+      const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      const day = days[d.getUTCDay()];
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const mon = months[d.getUTCMonth()];
+      const yyyy = d.getUTCFullYear();
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      const ss = String(d.getUTCSeconds()).padStart(2, "0");
+      asOf.textContent = `${day}, ${dd} ${mon} ${yyyy} ${hh}:${mm}:${ss} UTC`;
+    }
+
+    function clamp(n, min, max) {
+      return Math.max(min, Math.min(max, n));
     }
 
     function escapeHtml(value) {
-      return value
+      return String(value ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
@@ -349,44 +1247,402 @@
         .replaceAll("'", "&#39;");
     }
 
-    function prependEvents(events) {
-      if (!events.length) return;
-      events.forEach((event) => {
-        const card = cardFor(event);
-        feed.prepend(card);
-      });
+    function normalizeText(value) {
+      return String(value ?? "")
+        .toLowerCase()
+        .replaceAll(/\s+/g, " ")
+        .trim();
+    }
 
-      while (feed.children.length > MAX_VISIBLE_CARDS) {
-        feed.removeChild(feed.lastChild);
+    function eventTimeMs(event) {
+      const raw = event?.receivedAtIso;
+      const t = Date.parse(raw);
+      return Number.isFinite(t) ? t : 0;
+    }
+
+    function withinTimeWindow(event, nowMs) {
+      if (!Number.isFinite(timeWindowMs) || timeWindowMs === Infinity) return true;
+      const t = eventTimeMs(event);
+      if (!t) return true;
+      return nowMs - t <= timeWindowMs;
+    }
+
+    function seededFloat(seed) {
+      let x = Number(seed) || 0;
+      x = (x ^ 0x9e3779b9) >>> 0;
+      x = (x * 1664525 + 1013904223) >>> 0;
+      return (x & 0xffffffff) / 0x100000000;
+    }
+
+    function hashStringToInt(str) {
+      const s = String(str ?? "");
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    }
+
+    function eventToPseudoCoord(event) {
+      const basis = hashStringToInt(`${event?.id}|${event?.eventType}|${event?.question}|${event?.answer}`);
+      const r1 = seededFloat(basis);
+      const r2 = seededFloat(basis ^ 0x7f4a7c15);
+      const lat = (r1 * 140) - 70;
+      const lon = (r2 * 360) - 180;
+      return { lat, lon };
+    }
+
+    function projectEquirect(lat, lon) {
+      const x = (lon + 180) / 360;
+      const y = (90 - lat) / 180;
+      return { x, y };
+    }
+
+    function classifyEvent(event) {
+      const err = String(event?.aiError || "").trim();
+      if (err) return "hot";
+      const answer = normalizeText(event?.answer);
+      const q = normalizeText(event?.question);
+      const dangerWords = ["urgent", "weapon", "explosive", "fire", "smoke", "fight", "threat", "attack", "bomb", "knife", "gun"];
+      if (dangerWords.some((w) => answer.includes(w) || q.includes(w))) return "hot";
+      const warnWords = ["lost", "missing", "help", "suspicious", "medical", "injury", "bleeding", "stolen"];
+      if (warnWords.some((w) => answer.includes(w) || q.includes(w))) return "warn";
+      return "info";
+    }
+
+    function openModal(event) {
+      const when = event?.receivedAtIso ? new Date(event.receivedAtIso) : null;
+      modalTitle.textContent = `Event #${event?.id ?? "?"}`;
+      modalWhen.textContent = when ? when.toLocaleString() : "-";
+      modalType.textContent = String(event?.eventType || "unknown");
+      modalQ.textContent = String(event?.question || "-");
+      modalA.textContent = String(event?.answer || "(no answer)");
+      const err = String(event?.aiError || "").trim();
+      modalErrWrap.style.display = err ? "" : "none";
+      modalErr.textContent = err || "-";
+      if (event?.frameJpegBase64) {
+        modalImg.src = `data:${event?.imageMimeType || "image/jpeg"};base64,${event.frameJpegBase64}`;
+        modalImg.style.opacity = "1";
+      } else {
+        modalImg.removeAttribute("src");
+        modalImg.style.opacity = "0.55";
+      }
+      modal.classList.add("open");
+    }
+
+    function closeModal() {
+      modal.classList.remove("open");
+    }
+
+    modalClose.addEventListener("click", closeModal);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeModal();
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchBox?.focus();
+      }
+    });
+
+    function buildTimeButtons() {
+      const host = document.getElementById("timeBtns");
+      host.innerHTML = "";
+      for (const f of TIME_FILTERS) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn" + (f.key === "7d" ? " active" : "");
+        b.textContent = f.label;
+        b.addEventListener("click", () => {
+          timeWindowMs = f.ms;
+          for (const el of host.querySelectorAll(".btn")) el.classList.remove("active");
+          b.classList.add("active");
+          renderAll();
+        });
+        host.appendChild(b);
+      }
+    }
+
+    function setPaneVisibility() {
+      paneNews.style.display = layerNews.checked ? "" : "none";
+      paneCams.style.display = layerCams.checked ? "" : "none";
+      paneAi.style.display = layerAi.checked ? "" : "none";
+      signalLayer.style.display = layerSignals.checked ? "" : "none";
+    }
+
+    layerSignals.addEventListener("change", setPaneVisibility);
+    layerNews.addEventListener("change", setPaneVisibility);
+    layerCams.addEventListener("change", setPaneVisibility);
+    layerAi.addEventListener("change", setPaneVisibility);
+
+    function bindTabs() {
+      for (const btn of paneNews.querySelectorAll("[data-news]")) {
+        btn.addEventListener("click", () => {
+          newsFilter = btn.getAttribute("data-news") || "all";
+          for (const el of paneNews.querySelectorAll("[data-news]")) el.classList.remove("active");
+          btn.classList.add("active");
+          renderNews();
+        });
+      }
+      for (const btn of paneCams.querySelectorAll("[data-cams]")) {
+        btn.addEventListener("click", () => {
+          camsFilter = btn.getAttribute("data-cams") || "recent";
+          for (const el of paneCams.querySelectorAll("[data-cams]")) el.classList.remove("active");
+          btn.classList.add("active");
+          renderCams();
+        });
+      }
+    }
+
+    function setMapMode(mode) {
+      const is3d = mode === "3d";
+      mapViewport.classList.toggle("mode3d", is3d);
+      mode2d.classList.toggle("active", !is3d);
+      mode3d.classList.toggle("active", is3d);
+    }
+
+    mode2d.addEventListener("click", () => setMapMode("2d"));
+    mode3d.addEventListener("click", () => setMapMode("3d"));
+
+    function applyZoom() {
+      const z = clamp(zoom, 0.85, 1.8);
+      zoom = z;
+      mapViewport.style.transform = `scale(${z})` + (mapViewport.classList.contains("mode3d") ? " perspective(1200px) rotateX(14deg)" : "");
+    }
+
+    function setZoom(next) {
+      zoom = clamp(next, 0.85, 1.8);
+      mapViewport.style.transform = `scale(${zoom})`;
+      if (mapViewport.classList.contains("mode3d")) {
+        mapViewport.style.transform = `perspective(1200px) rotateX(14deg) scale(${zoom})`;
+      }
+    }
+
+    zoomIn.addEventListener("click", () => setZoom(zoom + 0.12));
+    zoomOut.addEventListener("click", () => setZoom(zoom - 0.12));
+    zoomReset.addEventListener("click", () => setZoom(1));
+
+    regionSelect.addEventListener("change", () => {
+      const v = regionSelect.value || "global";
+      postureTheater.textContent = v;
+      stageLabel.textContent = v === "global" ? "Situation Map" : `Sector ${v.toUpperCase()}`;
+    });
+
+    function filteredEvents() {
+      const nowMs = Date.now();
+      const q = normalizeText(searchBox?.value || "");
+      const out = [];
+      for (let i = allEvents.length - 1; i >= 0; i--) {
+        const ev = allEvents[i];
+        if (!withinTimeWindow(ev, nowMs)) continue;
+        if (q) {
+          const bag = normalizeText(`${ev?.question || ""} ${ev?.answer || ""} ${ev?.eventType || ""}`);
+          if (!bag.includes(q)) continue;
+        }
+        out.push(ev);
+      }
+      return out.reverse();
+    }
+
+    function renderSignals(events) {
+      if (!layerSignals.checked) {
+        signalsCount.textContent = "0";
+        return;
       }
 
-      empty.style.display = "none";
+      const subset = events.slice(-SIGS_MAX);
+      signalsCount.textContent = String(subset.length);
+      signalLayer.innerHTML = "";
+
+      const hot = [];
+      const warn = [];
+      const info = [];
+      for (const ev of subset) {
+        const cls = classifyEvent(ev);
+        if (cls === "hot") hot.push(ev);
+        else if (cls === "warn") warn.push(ev);
+        else info.push(ev);
+      }
+
+      const ordered = [...info, ...warn, ...hot];
+      const totalDots = ordered.length;
+      for (let i = 0; i < totalDots; i++) {
+        const ev = ordered[i];
+        const { lat, lon } = eventToPseudoCoord(ev);
+        const p = projectEquirect(lat, lon);
+        const dot = document.createElement("span");
+        const cls = classifyEvent(ev);
+        dot.className = "sig" + (cls === "hot" ? " hot" : cls === "warn" ? " warn" : "") + (i === totalDots - 1 ? " pulse" : "");
+        dot.style.left = (p.x * 100).toFixed(2) + "%";
+        dot.style.top = (p.y * 100).toFixed(2) + "%";
+        dot.title = `#${ev?.id ?? "?"} ${String(ev?.eventType || "event")}`;
+        signalLayer.appendChild(dot);
+      }
+    }
+
+    function renderNews() {
+      if (!layerNews.checked) {
+        newsCount.textContent = "0";
+        return;
+      }
+      const events = filteredEvents();
+      let subset = events;
+      if (newsFilter !== "all") {
+        subset = events.filter((e) => String(e?.eventType || "").trim().toLowerCase() === newsFilter);
+      }
+      subset = subset.slice(-NEWS_MAX).reverse();
+      newsCount.textContent = String(subset.length);
+      newsList.innerHTML = "";
+      newsEmpty.style.display = subset.length ? "none" : "";
+      for (const ev of subset) {
+        const li = document.createElement("li");
+        const t = ev?.receivedAtIso ? new Date(ev.receivedAtIso) : null;
+        const headline = String(ev?.question || ev?.eventType || "Event").trim() || "Event";
+        const snip = String(ev?.answer || "").trim();
+        li.innerHTML = `
+          <div class="meta"><span>#${escapeHtml(ev?.id ?? "?")} • ${escapeHtml(String(ev?.eventType || "event"))}</span><span>${escapeHtml(t ? t.toLocaleTimeString() : "-")}</span></div>
+          <div class="headline">${escapeHtml(headline)}</div>
+          <div class="snippet">${escapeHtml(snip || "(no answer)")}</div>
+        `;
+        li.addEventListener("click", () => openModal(ev));
+        newsList.appendChild(li);
+      }
+    }
+
+    function renderCams() {
+      if (!layerCams.checked) {
+        camsCount.textContent = "0";
+        return;
+      }
+      const events = filteredEvents();
+      let subset = events.filter((e) => Boolean(e?.frameJpegBase64));
+      if (camsFilter === "answers") {
+        subset = subset.filter((e) => String(e?.answer || "").trim());
+      }
+      subset = subset.slice(-CAMS_MAX).reverse();
+      camsCount.textContent = String(subset.length);
+      camGrid.innerHTML = "";
+      camEmpty.style.display = subset.length ? "none" : "";
+      for (const ev of subset) {
+        const t = ev?.receivedAtIso ? new Date(ev.receivedAtIso) : null;
+        const wrap = document.createElement("div");
+        wrap.className = "thumb";
+        const mime = ev?.imageMimeType || "image/jpeg";
+        const src = `data:${mime};base64,${ev.frameJpegBase64}`;
+        wrap.innerHTML = `
+          <img alt="Event frame" src="${src}"/>
+          <div class="cap"><span>#${escapeHtml(ev?.id ?? "?")}</span><span>${escapeHtml(t ? t.toLocaleTimeString() : "-")}</span></div>
+        `;
+        wrap.addEventListener("click", () => openModal(ev));
+        camGrid.appendChild(wrap);
+      }
+    }
+
+    function deriveInsights(events) {
+      const latest = events.length ? events[events.length - 1] : null;
+      const last = latest || allEvents[allEvents.length - 1] || null;
+      if (!last) {
+        briefWhen.textContent = "--";
+        briefText.textContent = "Waiting for events from /api/events…";
+        assessPill.className = "pillok";
+        assessPill.textContent = "OK";
+        keySignal.textContent = "n/a";
+        keyNotes.textContent = "n/a";
+        aiLiveDot.classList.remove("live");
+        aiLiveText.textContent = "idle";
+        postureStatus.textContent = "idle";
+        postureLevel.textContent = "normal";
+        activeAlerts.textContent = "0";
+        return;
+      }
+
+      const when = last?.receivedAtIso ? new Date(last.receivedAtIso) : null;
+      briefWhen.textContent = when ? when.toLocaleString() : "-";
+      const err = String(last?.aiError || "").trim();
+      const answer = String(last?.answer || "").trim();
+      const question = String(last?.question || "").trim();
+      const focus = answer || question || String(last?.eventType || "Event");
+      briefText.textContent = focus || "Event received.";
+
+      const cls = classifyEvent(last);
+      const isHot = cls === "hot";
+      const isWarn = cls === "warn";
+      assessPill.className = isHot ? "pillcrit" : isWarn ? "pillelev" : "pillok";
+      assessPill.textContent = isHot ? "CRIT" : isWarn ? "ELEV" : "OK";
+
+      const words = normalizeText(`${question} ${answer}`).split(" ").filter(Boolean);
+      keySignal.textContent = words.length ? words.slice(0, 3).join(" ") : String(last?.eventType || "event");
+      keyNotes.textContent = err ? "AI error (fallback to operator review)" : (answer ? "Answer delivered" : "Awaiting answer");
+      aiLiveDot.classList.toggle("live", Boolean(answer || question));
+      aiLiveText.textContent = answer ? "live" : "monitoring";
+
+      postureStatus.textContent = isHot ? "degraded" : isWarn ? "watch" : "stable";
+      postureLevel.textContent = isHot ? "crit" : isWarn ? "elevated" : "normal";
+      activeAlerts.textContent = String(isHot ? 1 : isWarn ? 1 : 0);
+      latestIntent.textContent = String(last?.eventType || "unknown");
+    }
+
+    function calcRatePerMin() {
+      const now = Date.now();
+      while (recentEventTimes.length && now - recentEventTimes[0] > 60_000) {
+        recentEventTimes.shift();
+      }
+      ratePerMin.textContent = String(recentEventTimes.length);
+    }
+
+    function renderAll() {
+      const events = filteredEvents();
+      renderSignals(events);
+      renderNews();
+      renderCams();
+      if (layerAi.checked) {
+        aiCount.textContent = "1";
+        deriveInsights(events);
+      } else {
+        aiCount.textContent = "0";
+      }
+    }
+
+    searchBox.addEventListener("input", () => renderAll());
+
+    function ingestEvents(events) {
+      if (!Array.isArray(events) || !events.length) return;
+      for (const ev of events) {
+        allEvents.push(ev);
+        recentEventTimes.push(Date.now());
+      }
+      while (allEvents.length > MAX_EVENTS) allEvents.shift();
+
       total += events.length;
       eventCount.textContent = String(total);
+      const last = events[events.length - 1];
+      const lastId = Number(last?.id) || 0;
+      if (lastId) {
+        latestId = Math.max(latestId, lastId);
+        lastIdEl.textContent = String(latestId);
+      }
+
+      const newest = events[events.length - 1];
+      const newestId = Number(newest?.id) || 0;
+      const answer = newest?.answer || "";
+      if (newestId > lastSpokenId && String(answer).trim()) {
+        lastSpokenId = newestId;
+        speakText(answer);
+      }
+
+      calcRatePerMin();
+      renderAll();
     }
 
     async function poll() {
       try {
         const resp = await fetch(`/api/events?since=${latestId}&limit=200`, { cache: "no-store" });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
         const payload = await resp.json();
-        const events = payload.events || [];
-
-        if (events.length > 0) {
-          latestId = events[events.length - 1].id;
-          lastIdEl.textContent = String(latestId);
-          prependEvents(events);
-
-          const newest = events[events.length - 1];
-          const newestId = Number(newest?.id) || 0;
-          const answer = newest?.answer || "";
-          if (newestId > lastSpokenId && String(answer).trim()) {
-            lastSpokenId = newestId;
-            speakText(answer);
-          }
-        }
-
+        const events = payload?.events || [];
+        if (events.length) ingestEvents(events);
         setConnection(true, "live");
       } catch (error) {
         setConnection(false, "reconnecting");
@@ -395,6 +1651,18 @@
       }
     }
 
+    buildTimeButtons();
+    bindTabs();
+    setPaneVisibility();
+    setMapMode("2d");
+    setZoom(1);
+    fmtUtcClock();
+    fmtAsOf();
+    setInterval(() => {
+      fmtUtcClock();
+      fmtAsOf();
+      calcRatePerMin();
+    }, 1000);
     poll();
   </script>
 </body>
