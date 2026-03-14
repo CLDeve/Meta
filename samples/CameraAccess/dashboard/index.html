@@ -1718,8 +1718,23 @@
       const t = normalizeText(text);
       if (t.includes("cancel") || t.includes("closed")) return "status-bad";
       if (t.includes("delay") || t.includes("closing") || t.includes("last call")) return "status-warn";
-      if (t.includes("gate open") || t === "open") return "status-ok";
+      if (t.includes("in-progress") || t.includes("opening") || t.includes("gate open") || t === "open") return "status-ok";
       return "dim";
+    }
+
+    function gatePhaseLabel(gateStatus, paxPct) {
+      const status = normalizeText(gateStatus);
+      if (!status) return "";
+      if (status.includes("cancel")) return "Cancelled";
+      if (status.includes("closed")) return "Gate Closed";
+      if (status.includes("closing") || status.includes("final call") || status.includes("last call")) return "Gate Closing";
+      if (status !== "gate open" && status !== "open") return gateStatus;
+
+      const pct = clampPct(paxPct);
+      if (pct == null) return "Gate In-Progress";
+      if (pct >= 92) return "Gate Closing";
+      if (pct >= 60) return "Gate In-Progress";
+      return "Gate Opening";
     }
 
     function renderFlights() {
@@ -1734,9 +1749,10 @@
         const gateInfo = gate ? gatesCache.get(gate) : null;
         const gateStatus = gateInfo?.status || "";
         const pct = gateInfo?.pct;
+        const phase = gatePhaseLabel(gateStatus, pct);
 
         const statusText = gateStatus
-          ? (pct != null ? `${gateStatus} • ${pct}%` : gateStatus)
+          ? (pct != null ? `${phase || gateStatus} • ${pct}%` : (phase || gateStatus))
           : (row.status || "-");
 
         out.push({
