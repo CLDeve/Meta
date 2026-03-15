@@ -73,7 +73,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -164,8 +166,8 @@ fun StreamScreen(
                     .clip(previewShape),
             contentScale = ContentScale.Crop,
         )
-        if (streamUiState.isLiveBoxesEnabled && streamUiState.livePeopleBoxes.isNotEmpty()) {
-          Canvas(modifier = Modifier.fillMaxSize().clip(previewShape)) {
+	        if (streamUiState.isLiveBoxesEnabled && streamUiState.livePeopleBoxes.isNotEmpty()) {
+	          Canvas(modifier = Modifier.fillMaxSize().clip(previewShape)) {
             val dstW = size.width
             val dstH = size.height
             val srcW = currentFrame.width.toFloat().coerceAtLeast(1f)
@@ -176,25 +178,53 @@ fun StreamScreen(
             val dx = (dstW - dispW) / 2f
             val dy = (dstH - dispH) / 2f
 
-            val stroke = Stroke(width = 3.dp.toPx())
-            streamUiState.livePeopleBoxes.forEach { b ->
-              val left = dx + (b.left * dispW)
-              val top = dy + (b.top * dispH)
-              val right = dx + (b.right * dispW)
-              val bottom = dy + (b.bottom * dispH)
-              drawRect(
-                  color = Color(0xFFFFD000),
-                  topLeft = androidx.compose.ui.geometry.Offset(left, top),
-                  size =
-                      androidx.compose.ui.geometry.Size(
-                          (right - left).coerceAtLeast(0f),
-                          (bottom - top).coerceAtLeast(0f),
-                      ),
-                  style = stroke,
-              )
-            }
-          }
-        }
+	            val stroke = Stroke(width = 3.dp.toPx())
+	            val labelTextSizePx = 14.dp.toPx()
+	            val labelPaddingPx = 6.dp.toPx()
+	            val labelBgHeightPx = labelTextSizePx + (labelPaddingPx * 2f)
+	            streamUiState.livePeopleBoxes.forEach { b ->
+	              val left = dx + (b.left * dispW)
+	              val top = dy + (b.top * dispH)
+	              val right = dx + (b.right * dispW)
+	              val bottom = dy + (b.bottom * dispH)
+	              val boxColor = Color(0xFFFFD000)
+	              drawRect(
+	                  color = boxColor,
+	                  topLeft = androidx.compose.ui.geometry.Offset(left, top),
+	                  size =
+	                      androidx.compose.ui.geometry.Size(
+	                          (right - left).coerceAtLeast(0f),
+	                          (bottom - top).coerceAtLeast(0f),
+	                      ),
+	                  style = stroke,
+	              )
+	              val label = b.label?.takeIf { it.isNotBlank() } ?: return@forEach
+	              val clampedLeft = left.coerceIn(0f, (dstW - 1f).coerceAtLeast(0f))
+	              val clampedTop = top.coerceIn(0f, (dstH - 1f).coerceAtLeast(0f))
+	              drawRect(
+	                  color = Color.Black.copy(alpha = 0.62f),
+	                  topLeft = androidx.compose.ui.geometry.Offset(clampedLeft, clampedTop),
+	                  size =
+	                      androidx.compose.ui.geometry.Size(
+	                          (right - left).coerceAtLeast(1f).coerceAtMost(dstW - clampedLeft),
+	                          labelBgHeightPx.coerceAtMost(dstH - clampedTop),
+	                      ),
+	              )
+	              drawIntoCanvas { canvas: androidx.compose.ui.graphics.Canvas ->
+	                val paint =
+	                    android.graphics.Paint().apply {
+	                      isAntiAlias = true
+	                      textSize = labelTextSizePx
+	                      color = android.graphics.Color.argb(240, 255, 208, 0)
+	                      typeface = android.graphics.Typeface.MONOSPACE
+	                    }
+	                val textX = clampedLeft + labelPaddingPx
+	                val textY = clampedTop + labelPaddingPx + labelTextSizePx
+	                canvas.nativeCanvas.drawText(label, textX, textY, paint)
+	              }
+	            }
+	          }
+	        }
       } ?: Surface(
           modifier =
               Modifier.fillMaxSize()

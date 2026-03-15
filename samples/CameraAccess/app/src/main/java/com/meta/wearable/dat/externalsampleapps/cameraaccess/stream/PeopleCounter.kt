@@ -8,6 +8,13 @@ import org.tensorflow.lite.task.vision.detector.ObjectDetector
 import org.tensorflow.lite.support.image.TensorImage
 
 internal class PeopleCounter(context: Context) {
+  data class ObjectDetection(
+      val boundingBox: RectF,
+      val label: String? = null,
+      val index: Int? = null,
+      val score: Float? = null,
+  )
+
   data class PersonDetection(
       val boundingBox: RectF,
       val score: Float? = null,
@@ -32,32 +39,40 @@ internal class PeopleCounter(context: Context) {
     detector = ObjectDetector.createFromFileAndOptions(context, MODEL_ASSET_NAME, options)
   }
 
-  fun detectPeople(bitmap: Bitmap): List<PersonDetection> {
+  fun detectObjects(bitmap: Bitmap): List<ObjectDetection> {
     if (bitmap.width <= 0 || bitmap.height <= 0) return emptyList()
     val image = TensorImage.fromBitmap(bitmap)
     val results = detector.detect(image)
     if (results.isEmpty()) return emptyList()
 
-    val detections = ArrayList<PersonDetection>(results.size)
+    val detections = ArrayList<ObjectDetection>(results.size)
     for (det in results) {
-      val categories = det.categories
-      var bestScore: Float? = null
-      val isPerson =
-          categories.any { category ->
-            val label = category.label?.lowercase().orEmpty()
-            // Some models ship without labels; for COCO models, class index 0 is commonly "person".
-            val matches = label == "person" || label.contains("person") || (label.isBlank() && category.index == 0)
-            if (matches) {
-              val score = category.score
-              bestScore = if (bestScore == null) score else maxOf(bestScore ?: score, score)
-            }
-            matches
-          }
-      if (!isPerson) continue
-
-      detections.add(PersonDetection(RectF(det.boundingBox), bestScore))
+      val bestCategory = det.categories.maxByOrNull { it.score }
+      detections.add(
+          ObjectDetection(
+              boundingBox = RectF(det.boundingBox),
+              label = bestCategory?.label,
+              index = bestCategory?.index,
+              score = bestCategory?.score,
+          )
+      )
     }
     return detections
+  }
+
+  fun detectPeople(bitmap: Bitmap): List<PersonDetection> {
+    val detections = detectObjects(bitmap)
+    if (detections.isEmpty()) return emptyList()
+
+    val people = ArrayList<PersonDetection>(detections.size)
+    for (det in detections) {
+      val label = det.label?.lowercase().orEmpty()
+      // Some models ship without labels; for COCO models, class index 0 is commonly "person".
+      val isPerson = label == "person" || label.contains("person") || (label.isBlank() && det.index == 0)
+      if (!isPerson) continue
+      people.add(PersonDetection(RectF(det.boundingBox), det.score))
+    }
+    return people
   }
 
   fun detectPeopleInFront(bitmap: Bitmap): List<PersonDetection> {

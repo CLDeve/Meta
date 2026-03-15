@@ -31,6 +31,7 @@ data class NormalizedBox(
     val right: Float,
     val bottom: Float,
     val score: Float? = null,
+    val label: String? = null,
 )
 
 data class StreamUiState(

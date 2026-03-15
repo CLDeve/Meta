@@ -2251,11 +2251,17 @@ class StreamViewModel(
             canvas.drawBitmap(bitmap, null, peopleDetectDstRect, peopleDetectPaint)
 
             val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
-            val detections = runCatching { counter.detectPeople(detectBitmap) }.getOrDefault(emptyList())
+            val peopleDetections = runCatching { counter.detectPeople(detectBitmap) }.getOrDefault(emptyList())
+            val objectDetections =
+                if (liveBoxesEnabled) {
+                  runCatching { counter.detectObjects(detectBitmap) }.getOrDefault(emptyList())
+                } else {
+                  emptyList()
+                }
             val countInFront = if (peopleCountingEnabled) runCatching { counter.detectPeopleInFront(detectBitmap).size }.getOrDefault(0) else null
             val boxes =
                 if (liveBoxesEnabled) {
-                  detections.map { det ->
+                  objectDetections.map { det ->
                     val box = det.boundingBox
                     NormalizedBox(
                         left = (box.left / targetWidth.toFloat()).coerceIn(0f, 1f),
@@ -2263,6 +2269,7 @@ class StreamViewModel(
                         right = (box.right / targetWidth.toFloat()).coerceIn(0f, 1f),
                         bottom = (box.bottom / targetHeight.toFloat()).coerceIn(0f, 1f),
                         score = det.score,
+                        label = det.label,
                     )
                   }
                 } else {
