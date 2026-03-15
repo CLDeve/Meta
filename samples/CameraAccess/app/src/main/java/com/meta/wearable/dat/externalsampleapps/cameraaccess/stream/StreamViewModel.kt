@@ -135,6 +135,14 @@ class StreamViewModel(
         "Set COMMAND_CENTER_URL to forward responses to command centre"
     private const val PEOPLE_DETECT_INTERVAL_MS = 650L
     private const val PEOPLE_DETECT_MAX_DIM_PX = 320
+    private val VEHICLE_LABELS =
+        setOf(
+            "bicycle",
+            "car",
+            "motorcycle",
+            "bus",
+            "truck",
+        )
     private const val QA_EVENT_TYPE = "qa"
     private const val LOST_FOUND_EVENT_TYPE = "lost_found"
     private const val MAX_CHAT_MESSAGES = 24
@@ -332,8 +340,10 @@ class StreamViewModel(
   fun capturePeopleCountSnapshot() {
     val frame = _uiState.value.videoFrame ?: return
     viewModelScope.launch(Dispatchers.Default) {
+      val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
       val maxDim = maxOf(frame.width, frame.height).coerceAtLeast(1)
-      val scale = minOf(1f, 640f / maxDim.toFloat())
+      val preferredMaxDimPx = counter.preferredInputMaxDimPx
+      val scale = minOf(1f, preferredMaxDimPx.toFloat() / maxDim.toFloat())
       val targetWidth = (frame.width * scale).toInt().coerceAtLeast(1)
       val targetHeight = (frame.height * scale).toInt().coerceAtLeast(1)
 
@@ -342,7 +352,6 @@ class StreamViewModel(
       peopleDetectDstRect.set(0, 0, targetWidth, targetHeight)
       canvas.drawBitmap(frame, null, peopleDetectDstRect, peopleDetectPaint)
 
-      val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
       val detections = runCatching { counter.detectPeople(snapshot) }.getOrDefault(emptyList())
 
       val normalized =
@@ -2233,8 +2242,10 @@ class StreamViewModel(
       lastPeopleDetectAtMs = nowMs
       peopleDetectJob =
           viewModelScope.launch(Dispatchers.Default) {
+            val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
+            val preferredMaxDimPx = counter.preferredInputMaxDimPx
             val maxDim = maxOf(bitmap.width, bitmap.height).coerceAtLeast(1)
-            val scale = minOf(1f, PEOPLE_DETECT_MAX_DIM_PX.toFloat() / maxDim.toFloat())
+            val scale = minOf(1f, preferredMaxDimPx.toFloat() / maxDim.toFloat())
             val targetWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
             val targetHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
 
@@ -2250,7 +2261,6 @@ class StreamViewModel(
             peopleDetectDstRect.set(0, 0, targetWidth, targetHeight)
             canvas.drawBitmap(bitmap, null, peopleDetectDstRect, peopleDetectPaint)
 
-            val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
             val objectDetections =
                 if (peopleCountingEnabled || liveBoxesEnabled) {
                   runCatching { counter.detectObjects(detectBitmap) }.getOrDefault(emptyList())
@@ -2282,7 +2292,14 @@ class StreamViewModel(
                 }
             val boxes =
                 if (liveBoxesEnabled) {
-                  objectDetections.map { det ->
+                  objectDetections
+                      .asSequence()
+                      .filter { det ->
+                        val label = det.label?.lowercase().orEmpty()
+                        if (label.isBlank()) return@filter true
+                        label in VEHICLE_LABELS
+                      }
+                      .map { det ->
                     val box = det.boundingBox
                     NormalizedBox(
                         left = (box.left / targetWidth.toFloat()).coerceIn(0f, 1f),
@@ -2293,6 +2310,7 @@ class StreamViewModel(
                         label = det.label,
                     )
                   }
+                      .toList()
                 } else {
                   emptyList()
                 }

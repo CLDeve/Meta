@@ -20,9 +20,21 @@ internal class PeopleCounter(context: Context) {
       val score: Float? = null,
   )
 
-  private val detector: ObjectDetector
+  val preferredInputMaxDimPx: Int
+
+  private val yolo: YoloTfliteDetector?
+  private val detector: ObjectDetector?
 
   init {
+    yolo =
+        runCatching {
+              YoloTfliteDetector(
+                  context = context,
+                  assetName = YOLO_MODEL_ASSET_NAME,
+              )
+            }
+            .getOrNull()
+
     val baseOptions =
         BaseOptions.builder()
             .setNumThreads(2)
@@ -36,19 +48,52 @@ internal class PeopleCounter(context: Context) {
             .setScoreThreshold(0.35f)
             .build()
 
-    detector = ObjectDetector.createFromFileAndOptions(context, MODEL_ASSET_NAME, options)
+    detector =
+        if (yolo == null) {
+          ObjectDetector.createFromFileAndOptions(context, EFFICIENTDET_MODEL_ASSET_NAME, options)
+        } else {
+          null
+        }
+
+    preferredInputMaxDimPx = (yolo?.preferredInputMaxDimPx ?: 320).coerceAtLeast(1)
   }
 
   fun detectObjects(bitmap: Bitmap): List<ObjectDetection> {
     if (bitmap.width <= 0 || bitmap.height <= 0) return emptyList()
+    val yoloDetector = yolo
+    if (yoloDetector != null) {
+      val detections = yoloDetector.detect(bitmap)
+      if (detections.isEmpty()) return emptyList()
+      val out = ArrayList<ObjectDetection>(detections.size)
+      for (det in detections) {
+        val label = COCO_LABELS.getOrNull(det.classIndex)
+        out.add(
+            ObjectDetection(
+                boundingBox =
+                    RectF(
+                        det.left * bitmap.width.toFloat(),
+                        det.top * bitmap.height.toFloat(),
+                        det.right * bitmap.width.toFloat(),
+                        det.bottom * bitmap.height.toFloat(),
+                    ),
+                label = label ?: "cls${det.classIndex}",
+                index = det.classIndex,
+                score = det.score,
+            )
+        )
+      }
+      return out
+    }
+
+    val eff = detector ?: return emptyList()
     val image = TensorImage.fromBitmap(bitmap)
-    val results = detector.detect(image)
+    val results = eff.detect(image)
     if (results.isEmpty()) return emptyList()
 
-    val detections = ArrayList<ObjectDetection>(results.size)
+    val out = ArrayList<ObjectDetection>(results.size)
     for (det in results) {
       val bestCategory = det.categories.maxByOrNull { it.score }
-      detections.add(
+      out.add(
           ObjectDetection(
               boundingBox = RectF(det.boundingBox),
               label = bestCategory?.label,
@@ -57,7 +102,7 @@ internal class PeopleCounter(context: Context) {
           )
       )
     }
-    return detections
+    return out
   }
 
   fun detectPeople(bitmap: Bitmap): List<PersonDetection> {
@@ -100,6 +145,93 @@ internal class PeopleCounter(context: Context) {
   fun countPeopleInFront(bitmap: Bitmap): Int = detectPeopleInFront(bitmap).size
 
   private companion object {
-    private const val MODEL_ASSET_NAME = "efficientdet-lite0.tflite"
+    private const val YOLO_MODEL_ASSET_NAME = "yolo11n_float16.tflite"
+    private const val EFFICIENTDET_MODEL_ASSET_NAME = "efficientdet-lite0.tflite"
+
+    // Standard COCO 80 classes (Ultralytics defaults).
+    // Used when the model doesn't carry label metadata.
+    private val COCO_LABELS =
+        listOf(
+            "person",
+            "bicycle",
+            "car",
+            "motorcycle",
+            "airplane",
+            "bus",
+            "train",
+            "truck",
+            "boat",
+            "traffic light",
+            "fire hydrant",
+            "stop sign",
+            "parking meter",
+            "bench",
+            "bird",
+            "cat",
+            "dog",
+            "horse",
+            "sheep",
+            "cow",
+            "elephant",
+            "bear",
+            "zebra",
+            "giraffe",
+            "backpack",
+            "umbrella",
+            "handbag",
+            "tie",
+            "suitcase",
+            "frisbee",
+            "skis",
+            "snowboard",
+            "sports ball",
+            "kite",
+            "baseball bat",
+            "baseball glove",
+            "skateboard",
+            "surfboard",
+            "tennis racket",
+            "bottle",
+            "wine glass",
+            "cup",
+            "fork",
+            "knife",
+            "spoon",
+            "bowl",
+            "banana",
+            "apple",
+            "sandwich",
+            "orange",
+            "broccoli",
+            "carrot",
+            "hot dog",
+            "pizza",
+            "donut",
+            "cake",
+            "chair",
+            "couch",
+            "potted plant",
+            "bed",
+            "dining table",
+            "toilet",
+            "tv",
+            "laptop",
+            "mouse",
+            "remote",
+            "keyboard",
+            "cell phone",
+            "microwave",
+            "oven",
+            "toaster",
+            "sink",
+            "refrigerator",
+            "book",
+            "clock",
+            "vase",
+            "scissors",
+            "teddy bear",
+            "hair drier",
+            "toothbrush",
+        )
   }
 }
