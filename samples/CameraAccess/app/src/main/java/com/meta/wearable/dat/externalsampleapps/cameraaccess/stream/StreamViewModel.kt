@@ -119,7 +119,7 @@ class StreamViewModel(
     private const val PREVIEW_MIN_FRAME_INTERVAL_MS = 1000L / PREVIEW_MAX_FPS
     private const val LIVE_POV_MIN_FRAME_INTERVAL_MS = 1000L / LIVE_POV_MAX_FPS
     // Direct I420->RGB conversion is CPU-heavy in Kotlin; keep preview small for smooth UI.
-    private const val PREVIEW_MAX_DIM_PX = 480
+    private const val PREVIEW_MAX_DIM_PX = 960
     private const val LIVE_POV_MAX_DIM_PX = 960
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
@@ -258,7 +258,7 @@ class StreamViewModel(
         Wearables.startStreamSession(
                 getApplication(),
                 deviceSelector,
-                StreamConfiguration(videoQuality = VideoQuality.MEDIUM, STREAM_FPS),
+                StreamConfiguration(videoQuality = VideoQuality.HIGH, STREAM_FPS),
             )
             .also { streamSession = it }
     videoJob =
