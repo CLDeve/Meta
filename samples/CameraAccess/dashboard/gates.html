@@ -71,13 +71,13 @@
       gap: 12px;
     }
 
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: var(--panel);
-      padding: 12px;
-      min-height: 150px;
-    }
+	    .card {
+	      border: 1px solid var(--border);
+	      border-radius: 0;
+	      background: var(--panel);
+	      padding: 12px;
+	      min-height: 150px;
+	    }
 
     .card.highPax {
       border-color: rgba(34, 197, 94, 0.55);
@@ -85,15 +85,15 @@
       box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.10), 0 16px 40px rgba(0, 0, 0, 0.18);
     }
 
-    .frame {
-      width: 100%;
-      height: 140px;
-      object-fit: cover;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      margin-bottom: 10px;
-      background: rgba(0, 0, 0, 0.35);
-    }
+	    .frame {
+	      width: 100%;
+	      height: 140px;
+	      object-fit: cover;
+	      border-radius: 0;
+	      border: 1px solid rgba(255, 255, 255, 0.16);
+	      margin-bottom: 10px;
+	      background: rgba(0, 0, 0, 0.35);
+	    }
 
     .frame.placeholder {
       display: flex;
@@ -128,14 +128,14 @@
       line-height: 1.5;
     }
 
-    .bar {
-      height: 8px;
-      border-radius: 999px;
-      overflow: hidden;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid var(--border);
-      margin-top: 6px;
-    }
+	    .bar {
+	      height: 8px;
+	      border-radius: 0;
+	      overflow: hidden;
+	      background: rgba(255, 255, 255, 0.08);
+	      border: 1px solid var(--border);
+	      margin-top: 6px;
+	    }
 
     .barFill {
       height: 100%;
@@ -184,24 +184,24 @@
       color: var(--error);
     }
 
-    .error {
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 143, 155, 0.3);
-      background: rgba(115, 24, 40, 0.28);
-      color: #ffd6db;
-      font-size: 13px;
-      line-height: 1.45;
-    }
+	    .error {
+	      margin-top: 10px;
+	      padding: 10px 12px;
+	      border-radius: 0;
+	      border: 1px solid rgba(255, 143, 155, 0.3);
+	      background: rgba(115, 24, 40, 0.28);
+	      color: #ffd6db;
+	      font-size: 13px;
+	      line-height: 1.45;
+	    }
 
-    .empty {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: var(--panel);
-      padding: 18px;
-      color: var(--muted);
-    }
+	    .empty {
+	      border: 1px solid var(--border);
+	      border-radius: 0;
+	      background: var(--panel);
+	      padding: 18px;
+	      color: var(--muted);
+	    }
 
     @media (max-width: 1000px) {
       .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
