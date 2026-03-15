@@ -102,7 +102,6 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.BorderStroke
@@ -585,18 +584,6 @@ private fun ChatOverlay(
               maxLines = 4,
               textStyle = AppTypography.Body.copy(color = Color.White),
               shape = RoundedCornerShape(999.dp),
-              trailingIcon = {
-                IconButton(
-                    onClick = { /* TODO: emoji picker */ },
-                    enabled = true,
-                ) {
-                  Icon(
-                      imageVector = Icons.Filled.SentimentSatisfiedAlt,
-                      contentDescription = "Emoji",
-                      tint = Color.White.copy(alpha = 0.85f),
-                  )
-                }
-              },
               colors =
                   TextFieldDefaults.colors(
                       focusedContainerColor = Color.White.copy(alpha = 0.07f),
