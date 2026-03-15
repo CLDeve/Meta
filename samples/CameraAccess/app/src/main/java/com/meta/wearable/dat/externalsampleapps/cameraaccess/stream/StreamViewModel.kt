@@ -2296,7 +2296,8 @@ class StreamViewModel(
                       .asSequence()
                       .filter { det ->
                         val label = det.label?.lowercase().orEmpty()
-                        if (label.isBlank()) return@filter true
+                        // If labels aren't known (e.g., custom model), don't filter away everything.
+                        if (label.isBlank() || label.startsWith("cls")) return@filter true
                         label in VEHICLE_LABELS
                       }
                       .map { det ->

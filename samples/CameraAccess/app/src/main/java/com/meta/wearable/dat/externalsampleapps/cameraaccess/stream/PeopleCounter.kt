@@ -3,6 +3,7 @@ package com.meta.wearable.dat.externalsampleapps.cameraaccess.stream
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.RectF
+import android.util.Log
 import org.tensorflow.lite.task.core.BaseOptions
 import org.tensorflow.lite.task.vision.detector.ObjectDetector
 import org.tensorflow.lite.support.image.TensorImage
@@ -34,6 +35,11 @@ internal class PeopleCounter(context: Context) {
               )
             }
             .getOrNull()
+    if (yolo != null) {
+      Log.i(TAG, "YOLO enabled: model=$YOLO_MODEL_ASSET_NAME input=${yolo.inputWidth}x${yolo.inputHeight} backend=${yoloBackendName()}")
+    } else {
+      Log.i(TAG, "YOLO not available; falling back to EfficientDet: model=$EFFICIENTDET_MODEL_ASSET_NAME")
+    }
 
     val baseOptions =
         BaseOptions.builder()
@@ -145,6 +151,7 @@ internal class PeopleCounter(context: Context) {
   fun countPeopleInFront(bitmap: Bitmap): Int = detectPeopleInFront(bitmap).size
 
   private companion object {
+    private const val TAG = "PeopleCounter"
     private const val YOLO_MODEL_ASSET_NAME = "yolo11n_float16.tflite"
     private const val EFFICIENTDET_MODEL_ASSET_NAME = "efficientdet-lite0.tflite"
 
@@ -233,5 +240,7 @@ internal class PeopleCounter(context: Context) {
             "hair drier",
             "toothbrush",
         )
+
+    private fun yoloBackendName(): String = "tflite-interpreter"
   }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
@@ -79,6 +80,11 @@ internal class YoloTfliteDetector(
     outputType = out0.dataType()
     outputShape = out0.shape()
     outputElementCount = outputShape.fold(1) { acc, v -> acc * v.coerceAtLeast(1) }
+
+    Log.i(
+        TAG,
+        "Loaded YOLO TFLite: asset=$assetName inputShape=${inShape.joinToString()} inputType=$inputType outputShape=${outputShape.joinToString()} outputType=$outputType",
+    )
   }
 
   fun detect(bitmap: Bitmap): List<Detection> {
@@ -381,5 +387,9 @@ internal class YoloTfliteDetector(
       val channel = input.channel
       return channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
     }
+  }
+
+  private companion object {
+    private const val TAG = "YoloTfliteDetector"
   }
 }
