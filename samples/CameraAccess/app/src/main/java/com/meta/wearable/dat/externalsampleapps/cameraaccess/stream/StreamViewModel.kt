@@ -112,14 +112,14 @@ class StreamViewModel(
     private const val MAX_VOICE_RETRIES = 1
     private const val AI_REQUEST_JPEG_QUALITY = 50
     private const val AI_READ_TIMEOUT_MS = 45_000
-    private const val STREAM_FPS = 20
+    private const val STREAM_FPS = 15
     private const val PREVIEW_JPEG_QUALITY = 55
     private const val PREVIEW_MAX_FPS = 6L
     private const val LIVE_POV_MAX_FPS = 6L
     private const val PREVIEW_MIN_FRAME_INTERVAL_MS = 1000L / PREVIEW_MAX_FPS
     private const val LIVE_POV_MIN_FRAME_INTERVAL_MS = 1000L / LIVE_POV_MAX_FPS
     // Direct I420->RGB conversion is CPU-heavy in Kotlin; keep preview small for smooth UI.
-    private const val PREVIEW_MAX_DIM_PX = 960
+    private const val PREVIEW_MAX_DIM_PX = 720
     private const val LIVE_POV_MAX_DIM_PX = 960
     private const val HANDS_FREE_RESTART_DELAY_MS = 450L
     private const val HANDS_FREE_RECONNECT_DELAY_MS = 1_200L
