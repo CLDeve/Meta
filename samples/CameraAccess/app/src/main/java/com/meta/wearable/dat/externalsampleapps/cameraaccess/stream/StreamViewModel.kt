@@ -2251,14 +2251,35 @@ class StreamViewModel(
             canvas.drawBitmap(bitmap, null, peopleDetectDstRect, peopleDetectPaint)
 
             val counter = peopleCounter ?: PeopleCounter(getApplication()).also { peopleCounter = it }
-            val peopleDetections = runCatching { counter.detectPeople(detectBitmap) }.getOrDefault(emptyList())
             val objectDetections =
-                if (liveBoxesEnabled) {
+                if (peopleCountingEnabled || liveBoxesEnabled) {
                   runCatching { counter.detectObjects(detectBitmap) }.getOrDefault(emptyList())
                 } else {
                   emptyList()
                 }
-            val countInFront = if (peopleCountingEnabled) runCatching { counter.detectPeopleInFront(detectBitmap).size }.getOrDefault(0) else null
+
+            val countInFront =
+                if (!peopleCountingEnabled) {
+                  null
+                } else {
+                  val w = targetWidth.toFloat().coerceAtLeast(1f)
+                  val h = targetHeight.toFloat().coerceAtLeast(1f)
+                  val centerMinX = w * 0.25f
+                  val centerMaxX = w * 0.75f
+                  val centerMinY = h * 0.20f
+                  val centerMaxY = h * 0.90f
+                  objectDetections.count { det ->
+                    val label = det.label?.lowercase().orEmpty()
+                    val isPerson = label == "person" || label.contains("person") || (label.isBlank() && det.index == 0)
+                    if (!isPerson) return@count false
+                    val box = det.boundingBox
+                    val cx = (box.left + box.right) / 2f
+                    val cy = (box.top + box.bottom) / 2f
+                    if (cx < centerMinX || cx > centerMaxX || cy < centerMinY || cy > centerMaxY) return@count false
+                    val area = (box.width() * box.height()) / (w * h)
+                    area >= 0.015f
+                  }
+                }
             val boxes =
                 if (liveBoxesEnabled) {
                   objectDetections.map { det ->
