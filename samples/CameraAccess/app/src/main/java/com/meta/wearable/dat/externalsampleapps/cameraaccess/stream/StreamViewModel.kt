@@ -135,14 +135,6 @@ class StreamViewModel(
         "Set COMMAND_CENTER_URL to forward responses to command centre"
     private const val PEOPLE_DETECT_INTERVAL_MS = 650L
     private const val PEOPLE_DETECT_MAX_DIM_PX = 320
-    private val VEHICLE_LABELS =
-        setOf(
-            "bicycle",
-            "car",
-            "motorcycle",
-            "bus",
-            "truck",
-        )
     private const val QA_EVENT_TYPE = "qa"
     private const val LOST_FOUND_EVENT_TYPE = "lost_found"
     private const val MAX_CHAT_MESSAGES = 24
@@ -2294,12 +2286,6 @@ class StreamViewModel(
                 if (liveBoxesEnabled) {
                   objectDetections
                       .asSequence()
-                      .filter { det ->
-                        val label = det.label?.lowercase().orEmpty()
-                        // If labels aren't known (e.g., custom model), don't filter away everything.
-                        if (label.isBlank() || label.startsWith("cls")) return@filter true
-                        label in VEHICLE_LABELS
-                      }
                       .map { det ->
                     val box = det.boundingBox
                     NormalizedBox(
