@@ -98,6 +98,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.RecordVoiceOver
@@ -278,7 +279,7 @@ fun StreamScreen(
                 .padding(horizontal = 14.dp, vertical = 16.dp),
     )
 
-    ChatOverlay(
+	    ChatOverlay(
         streamUiState = streamUiState,
         isDescribeLoading = isDescribeLoading,
         chatMessages = chatMessages,
@@ -288,10 +289,11 @@ fun StreamScreen(
         onStartVoiceDescribe = { streamViewModel.startVoiceDescribe(context) },
         onCapturePhoto = { streamViewModel.capturePhoto() },
         onOpenPeopleCountPage = { streamViewModel.showPeopleCountPage() },
-        onToggleHeyCas = { streamViewModel.toggleHeyCas(context) },
-        onToggleLiveBoxes = { streamViewModel.toggleLiveBoxes() },
-        onToggleLivePov = { streamViewModel.toggleLivePovSharing() },
-        onTogglePatrol = { streamViewModel.togglePatrolMode() },
+	        onToggleHeyCas = { streamViewModel.toggleHeyCas(context) },
+	        onToggleLiveBoxes = { streamViewModel.toggleLiveBoxes() },
+	        onToggleSharpen = { streamViewModel.toggleSharpen() },
+	        onToggleLivePov = { streamViewModel.toggleLivePovSharing() },
+	        onTogglePatrol = { streamViewModel.togglePatrolMode() },
         onStopStream = {
           streamViewModel.stopStream()
           wearablesViewModel.navigateToDeviceSelection()
@@ -348,23 +350,24 @@ fun StreamScreen(
 }
 
 @Composable
-private fun ChatOverlay(
-    streamUiState: StreamUiState,
-    isDescribeLoading: Boolean,
-    chatMessages: List<ChatMessage>,
-    isExpanded: Boolean,
-    onToggleExpanded: () -> Unit,
-    onSendQuestion: (String) -> Unit,
-    onStartVoiceDescribe: () -> Unit,
-    onCapturePhoto: () -> Unit,
-    onOpenPeopleCountPage: () -> Unit,
-    onToggleHeyCas: () -> Unit,
-    onToggleLiveBoxes: () -> Unit,
-    onToggleLivePov: () -> Unit,
-    onTogglePatrol: () -> Unit,
-    onStopStream: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+	private fun ChatOverlay(
+	    streamUiState: StreamUiState,
+	    isDescribeLoading: Boolean,
+	    chatMessages: List<ChatMessage>,
+	    isExpanded: Boolean,
+	    onToggleExpanded: () -> Unit,
+	    onSendQuestion: (String) -> Unit,
+	    onStartVoiceDescribe: () -> Unit,
+	    onCapturePhoto: () -> Unit,
+	    onOpenPeopleCountPage: () -> Unit,
+	    onToggleHeyCas: () -> Unit,
+	    onToggleLiveBoxes: () -> Unit,
+	    onToggleSharpen: () -> Unit,
+	    onToggleLivePov: () -> Unit,
+	    onTogglePatrol: () -> Unit,
+	    onStopStream: () -> Unit,
+	    modifier: Modifier = Modifier,
+	) {
   var draft by rememberSaveable { mutableStateOf("") }
   var isMenuOpen by rememberSaveable { mutableStateOf(false) }
   val canSend = draft.isNotBlank()
@@ -499,25 +502,36 @@ private fun ChatOverlay(
                   },
               )
             }
-            item {
-              QuickActionIcon(
-                  icon = Icons.Filled.CropFree,
-                  contentDescription = "Live boxes",
-                  isSelected = streamUiState.isLiveBoxesEnabled,
-                  onClick = {
-                    isMenuOpen = false
-                    onToggleLiveBoxes()
-                  },
-              )
-            }
-            item {
-              QuickActionIcon(
-                  icon = Icons.Filled.Public,
-                  contentDescription = "Live POV",
-                  isSelected = streamUiState.isLivePovSharingEnabled,
-                  onClick = { onToggleLivePov() },
-              )
-            }
+	            item {
+	              QuickActionIcon(
+	                  icon = Icons.Filled.CropFree,
+	                  contentDescription = "Live boxes",
+	                  isSelected = streamUiState.isLiveBoxesEnabled,
+	                  onClick = {
+	                    isMenuOpen = false
+	                    onToggleLiveBoxes()
+	                  },
+	              )
+	            }
+	            item {
+	              QuickActionIcon(
+	                  icon = Icons.Filled.AutoFixHigh,
+	                  contentDescription = "Sharpen",
+	                  isSelected = streamUiState.isSharpenEnabled,
+	                  onClick = {
+	                    isMenuOpen = false
+	                    onToggleSharpen()
+	                  },
+	              )
+	            }
+	            item {
+	              QuickActionIcon(
+	                  icon = Icons.Filled.Public,
+	                  contentDescription = "Live POV",
+	                  isSelected = streamUiState.isLivePovSharingEnabled,
+	                  onClick = { onToggleLivePov() },
+	              )
+	            }
             item {
               QuickActionIcon(
                   icon = Icons.Filled.Security,

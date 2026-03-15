@@ -211,6 +211,9 @@ class StreamViewModel(
   private var i420FrameBuffer = ByteArray(0)
   private var previewBitmapA: Bitmap? = null
   private var previewBitmapB: Bitmap? = null
+  private var previewSharpenBitmap: Bitmap? = null
+  private var previewSharpenInPixels: IntArray = IntArray(0)
+  private var previewSharpenOutPixels: IntArray = IntArray(0)
   private var previewBitmapWriteIsA = true
   private var previewArgbBuffer: ByteBuffer? = null
   private var peopleCounter: PeopleCounter? = null
@@ -298,6 +301,8 @@ class StreamViewModel(
     previewBitmapA = null
     previewBitmapB?.recycle()
     previewBitmapB = null
+    previewSharpenBitmap?.recycle()
+    previewSharpenBitmap = null
     peopleDetectBitmap?.recycle()
     peopleDetectBitmap = null
     peopleDetectCanvas = null
@@ -319,6 +324,11 @@ class StreamViewModel(
   fun toggleLiveBoxes() {
     val next = !_uiState.value.isLiveBoxesEnabled
     _uiState.update { it.copy(isLiveBoxesEnabled = next, livePeopleBoxes = if (next) it.livePeopleBoxes else emptyList()) }
+  }
+
+  fun toggleSharpen() {
+    val next = !_uiState.value.isSharpenEnabled
+    _uiState.update { it.copy(isSharpenEnabled = next) }
   }
 
   fun showPeopleCountPage() {
@@ -2207,23 +2217,25 @@ class StreamViewModel(
         previewArgbBuffer?.takeIf { it.capacity() == neededBytes }
             ?: ByteBuffer.allocateDirect(neededBytes).also { previewArgbBuffer = it }
     argbBuffer.clear()
-    NativeYuv.i420ToArgb(
-        i420 = i420FrameBuffer,
-        width = videoFrame.width,
-        height = videoFrame.height,
-        outBuffer = argbBuffer,
-        outWidth = outWidth,
-        outHeight = outHeight,
-    )
-    argbBuffer.rewind()
-    bitmap.copyPixelsFromBuffer(argbBuffer)
+	    NativeYuv.i420ToArgb(
+	        i420 = i420FrameBuffer,
+	        width = videoFrame.width,
+	        height = videoFrame.height,
+	        outBuffer = argbBuffer,
+	        outWidth = outWidth,
+	        outHeight = outHeight,
+	    )
+	    argbBuffer.rewind()
+	    bitmap.copyPixelsFromBuffer(argbBuffer)
 
-    previewBitmapWriteIsA = !previewBitmapWriteIsA
-    _uiState.update { it.copy(videoFrame = bitmap) }
-    if (livePovEnabled && nowMs - lastLivePovFrameAtMs >= LIVE_POV_MIN_FRAME_INTERVAL_MS) {
-      lastLivePovFrameAtMs = nowMs
-      livePovClient?.sendFrame(bitmap)
-    }
+	    val displayBitmap = if (_uiState.value.isSharpenEnabled) sharpenForPreview(bitmap) else bitmap
+
+	    previewBitmapWriteIsA = !previewBitmapWriteIsA
+	    _uiState.update { it.copy(videoFrame = displayBitmap) }
+	    if (livePovEnabled && nowMs - lastLivePovFrameAtMs >= LIVE_POV_MIN_FRAME_INTERVAL_MS) {
+	      lastLivePovFrameAtMs = nowMs
+	      livePovClient?.sendFrame(bitmap)
+	    }
 
     val peopleCountingEnabled = _uiState.value.isPeopleCountingEnabled
     val liveBoxesEnabled = _uiState.value.isLiveBoxesEnabled
@@ -2309,6 +2321,80 @@ class StreamViewModel(
             }
           }
     }
+  }
+
+  private fun sharpenForPreview(src: Bitmap): Bitmap {
+    val w = src.width
+    val h = src.height
+    if (w <= 2 || h <= 2) return src
+
+    val needed = w * h
+    if (previewSharpenInPixels.size < needed) previewSharpenInPixels = IntArray(needed)
+    if (previewSharpenOutPixels.size < needed) previewSharpenOutPixels = IntArray(needed)
+
+    src.getPixels(previewSharpenInPixels, 0, w, 0, 0, w, h)
+    val input = previewSharpenInPixels
+    val output = previewSharpenOutPixels
+
+    // Copy borders to avoid bounds checks in the inner loop.
+    for (x in 0 until w) {
+      output[x] = input[x]
+      output[(h - 1) * w + x] = input[(h - 1) * w + x]
+    }
+    for (y in 0 until h) {
+      output[y * w] = input[y * w]
+      output[y * w + (w - 1)] = input[y * w + (w - 1)]
+    }
+
+    // Kernel: [0 -1 0; -1 5 -1; 0 -1 0]
+    for (y in 1 until (h - 1)) {
+      val row = y * w
+      val up = (y - 1) * w
+      val down = (y + 1) * w
+      for (x in 1 until (w - 1)) {
+        val i = row + x
+        val c = input[i]
+        val a = (c ushr 24) and 0xFF
+        val cr = (c ushr 16) and 0xFF
+        val cg = (c ushr 8) and 0xFF
+        val cb = c and 0xFF
+
+        val u = input[up + x]
+        val d = input[down + x]
+        val l = input[i - 1]
+        val r = input[i + 1]
+
+        var rr =
+            (5 * cr) -
+                ((u ushr 16) and 0xFF) -
+                ((d ushr 16) and 0xFF) -
+                ((l ushr 16) and 0xFF) -
+                ((r ushr 16) and 0xFF)
+        var gg =
+            (5 * cg) -
+                ((u ushr 8) and 0xFF) -
+                ((d ushr 8) and 0xFF) -
+                ((l ushr 8) and 0xFF) -
+                ((r ushr 8) and 0xFF)
+        var bb = (5 * cb) - (u and 0xFF) - (d and 0xFF) - (l and 0xFF) - (r and 0xFF)
+        rr = rr.coerceIn(0, 255)
+        gg = gg.coerceIn(0, 255)
+        bb = bb.coerceIn(0, 255)
+
+        output[i] = (a shl 24) or (rr shl 16) or (gg shl 8) or bb
+      }
+    }
+
+    val existing = previewSharpenBitmap
+    val dst =
+        if (existing != null && existing.width == w && existing.height == h) {
+          existing
+        } else {
+          existing?.recycle()
+          Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { previewSharpenBitmap = it }
+        }
+    dst.setPixels(output, 0, w, 0, 0, w, h)
+    return dst
   }
 
   private fun encodeJpegBase64(bitmap: Bitmap, quality: Int): String =

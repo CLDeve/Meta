@@ -55,6 +55,7 @@ data class StreamUiState(
     val isHeyCasEnabled: Boolean = false,
     val isLiveBoxesEnabled: Boolean = false,
     val livePeopleBoxes: List<NormalizedBox> = emptyList(),
+    val isSharpenEnabled: Boolean = false,
     val isPeopleCountPageVisible: Boolean = false,
     val peopleCountSnapshot: Bitmap? = null,
     val peopleCountSnapshotCount: Int? = null,
